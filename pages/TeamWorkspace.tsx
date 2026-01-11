@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
 import { Team, StudentProfile, JoinRequest } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 interface TeamWorkspaceProps {
   userProfile: StudentProfile | null;
@@ -19,15 +20,59 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     return null;
   }
 
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
+  const [aiHistory, setAiHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const isLeader = userProfile?.teamRole === 'leader';
   const isFull = team.members.length === 5;
   const isSubmitted = team.status === 'submitted' || team.status === 'selected' || team.status === 'rejected';
 
-  // Mock de demandes d'adhésion si on est leader et l'équipe n'est pas pleine
   const [requests, setRequests] = useState<JoinRequest[]>(isLeader && !isFull && !isSubmitted ? [
     { studentId: 'req-1', studentName: 'Firas Ben Ali', major: 'Urbanisme', techSkills: ['Urbanisme / Aménagement'] },
     { studentId: 'req-2', studentName: 'Maya Trabelsi', major: 'Design', techSkills: ['Design UX / UI'] },
   ] : []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [aiHistory]);
+
+  const askAi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiMessage.trim()) return;
+
+    const userText = aiMessage;
+    setAiHistory(prev => [...prev, { role: 'user', text: userText }]);
+    setAiMessage('');
+    setIsAiLoading(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [...aiHistory, { role: 'user', text: userText }].map(m => ({
+          parts: [{ text: m.text }],
+          role: m.role === 'user' ? 'user' : 'model'
+        })),
+        config: {
+          systemInstruction: `Tu es l'IA Coach FNCT pour le hackathon 2026 "50 ans, 50 innovations". 
+          Ton rôle est d'aider l'équipe "${team.name}" travaillant sur le thème "${team.theme}" dans la région "${team.preferredRegion}".
+          Sois encourageant, technique et créatif. Utilise tes connaissances sur la Tunisie pour proposer des solutions réalistes.
+          Si l'utilisateur pose une question sur l'actualité ou des données locales, utilise la recherche Google.`,
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      setAiHistory(prev => [...prev, { role: 'model', text: response.text || "Désolé, j'ai eu un petit bug technique." }]);
+    } catch (error) {
+      console.error(error);
+      setAiHistory(prev => [...prev, { role: 'model', text: "Erreur de connexion avec l'IA." }]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const handleAcceptRequest = (req: JoinRequest) => {
     if (isFull) return;
@@ -46,11 +91,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     };
     setTeam(updatedTeam);
     setRequests(prev => prev.filter(r => r.studentId !== req.studentId));
-    alert(`${req.studentName} a été ajouté à l'équipe !`);
-  };
-
-  const handleRejectRequest = (reqId: string) => {
-    setRequests(prev => prev.filter(r => r.studentId !== reqId));
   };
 
   return (
@@ -70,10 +110,8 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
         }
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 relative">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          
-          {/* Members List */}
           <div className="lg:col-span-2 space-y-10">
             <section className="bg-white border border-gray-100 rounded-[2.5rem] shadow-sm overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
               <div className="px-10 py-6 bg-gray-50 border-b flex justify-between items-center">
@@ -96,34 +134,10 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className={`px-3 py-1 text-[8px] font-black rounded-lg uppercase tracking-widest ${m.role === 'leader' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        {m.role === 'leader' ? 'Chef' : 'Membre'}
-                      </span>
-                    </div>
                   </li>
                 ))}
               </ul>
             </section>
-
-            {/* Application Progress / Eligibility */}
-            {!isSubmitted && (
-               <section className="bg-white border border-gray-100 rounded-[2.5rem] p-10 shadow-sm">
-                  <h3 className="text-sm font-black text-blue-900 mb-8 uppercase tracking-widest">Statut d'Éligibilité</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className={`p-6 rounded-2xl border-2 ${isFull ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
-                      <p className="text-[10px] font-black uppercase mb-1">Effectif Minimal</p>
-                      <p className="text-lg font-black">{team.members.length} / 5 membres</p>
-                      <p className="text-[9px] font-bold mt-2 uppercase">{isFull ? 'Condition remplie' : 'Recrutement requis'}</p>
-                    </div>
-                    <div className="p-6 rounded-2xl border-2 bg-blue-50 border-blue-100 text-blue-700">
-                      <p className="text-[10px] font-black uppercase mb-1">Composition</p>
-                      <p className="text-lg font-black">Pluridisciplinaire</p>
-                      <p className="text-[9px] font-bold mt-2 uppercase">Vérifié automatiquement</p>
-                    </div>
-                  </div>
-               </section>
-            )}
 
             {isSubmitted && (
               <section className="bg-emerald-900 rounded-[2.5rem] p-12 text-white shadow-2xl relative overflow-hidden">
@@ -131,21 +145,11 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                 <div className="relative z-10">
                    <h3 className="text-2xl font-black uppercase mb-2 tracking-tighter">Candidature en cours de traitement</h3>
                    <p className="text-emerald-300 font-bold uppercase text-[10px] tracking-widest mb-10 italic">L'équipe est verrouillée. Votre dossier est entre les mains du jury.</p>
-                   
-                   <div className="flex items-center space-x-4 mb-8">
-                      <div className="w-4 h-4 rounded-full bg-emerald-400 animate-pulse"></div>
-                      <span className="text-xs font-black uppercase">Statut : {team.status === 'submitted' ? 'Soumis / À l\'examen' : team.status.toUpperCase()}</span>
-                   </div>
-
-                   <button disabled className="px-8 py-4 bg-emerald-800 text-white/50 border border-emerald-700 font-black text-[10px] uppercase rounded-2xl cursor-not-allowed">
-                     Modification impossible
-                   </button>
                 </div>
               </section>
             )}
           </div>
 
-          {/* Leader Panel / Invitations */}
           <div className="space-y-10">
              {isLeader && !isFull && !isSubmitted && (
                 <section className="bg-white border border-gray-100 rounded-[2.5rem] p-10 shadow-2xl animate-in fade-in zoom-in-95 duration-500">
@@ -157,46 +161,92 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                               <p className="text-xs font-black text-blue-900 uppercase tracking-tight">{req.studentName}</p>
                               <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">{req.major}</p>
                            </div>
-                           <div className="flex flex-wrap gap-1 mb-6">
-                              {req.techSkills.map(s => <span key={s} className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[8px] font-black rounded uppercase">{s}</span>)}
-                           </div>
                            <div className="grid grid-cols-2 gap-3">
-                              <button 
-                                onClick={() => handleAcceptRequest(req)}
-                                className="py-2.5 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-50 transition-all"
-                              >
-                                Accepter
-                              </button>
-                              <button 
-                                onClick={() => handleRejectRequest(req.studentId)}
-                                className="py-2.5 border border-gray-200 text-gray-400 text-[9px] font-black uppercase rounded-xl hover:bg-white transition-all"
-                              >
-                                Refuser
-                              </button>
+                              <button onClick={() => handleAcceptRequest(req)} className="py-2.5 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl hover:bg-emerald-700 transition-all">Accepter</button>
+                              <button onClick={() => setRequests(prev => prev.filter(r => r.studentId !== req.studentId))} className="py-2.5 border border-gray-200 text-gray-400 text-[9px] font-black uppercase rounded-xl hover:bg-white transition-all">Refuser</button>
                            </div>
                         </div>
                       ))}
-                      {requests.length === 0 && (
-                        <p className="text-center py-6 text-gray-300 font-black uppercase text-[9px] tracking-widest italic leading-relaxed">
-                          En attente de nouvelles<br/>candidatures spontanées...
-                        </p>
-                      )}
                    </div>
                 </section>
              )}
-
-             <section className="bg-blue-900 p-10 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-24 h-24 bg-blue-800 rounded-full blur-2xl -ml-12 -mt-12 opacity-50"></div>
-                <h3 className="text-sm font-black uppercase mb-6 tracking-widest text-blue-300">Information Clé</h3>
-                <p className="text-xs font-medium leading-relaxed italic mb-8">
-                  "Un chef d'équipe est verrouillé sur sa propre structure. Une fois l'équipe de 5 constituée, le profil est figé pour garantir la stabilité de la solution."
-                </p>
-                <div className="h-1 bg-blue-800 rounded-full overflow-hidden">
-                   <div className="h-full bg-blue-400" style={{width: `${(team.members.length/5)*100}%`}}></div>
-                </div>
-                <p className="text-[9px] font-black text-blue-400 uppercase mt-4 text-right">FNCT Charter 2026</p>
-             </section>
           </div>
+        </div>
+
+        {/* AI COACH FLOATING COMPONENT */}
+        <div className="fixed bottom-10 right-10 z-[60]">
+          {!isAiOpen ? (
+            <button 
+              onClick={() => setIsAiOpen(true)}
+              className="w-16 h-16 bg-blue-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-all animate-bounce hover:animate-none group relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-tr from-blue-400 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <svg className="w-8 h-8 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              <span className="absolute -top-12 right-0 bg-blue-900 text-white text-[8px] font-black uppercase px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-xl whitespace-nowrap tracking-widest">Besoin d'aide ? Coach IA</span>
+            </button>
+          ) : (
+            <div className="w-96 h-[550px] bg-white rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-gray-100 animate-in slide-in-from-bottom-10 duration-300">
+               <div className="p-6 bg-blue-900 text-white flex justify-between items-center">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center">
+                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest">Coach IA FNCT</p>
+                      <p className="text-[9px] text-blue-300 font-bold uppercase">Expert Innovation Locale</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setIsAiOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+               </div>
+               
+               <div className="flex-grow overflow-y-auto p-6 space-y-4 bg-gray-50/50">
+                  {aiHistory.length === 0 && (
+                    <div className="text-center py-10">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-4">Posez-moi une question !</p>
+                      <div className="space-y-2">
+                        <button onClick={() => setAiMessage("Comment innover sur les déchets à Djerba ?")} className="block w-full text-[10px] font-black uppercase p-3 bg-white border border-gray-100 rounded-xl hover:bg-blue-50 transition-colors">"Comment innover sur les déchets à Djerba ?"</button>
+                        <button onClick={() => setAiMessage("Aide-nous à rédiger notre vision.")} className="block w-full text-[10px] font-black uppercase p-3 bg-white border border-gray-100 rounded-xl hover:bg-blue-50 transition-colors">"Aide-nous à rédiger notre vision."</button>
+                      </div>
+                    </div>
+                  )}
+                  {aiHistory.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] p-4 rounded-2xl text-xs font-medium leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}`}>
+                        {m.text}
+                      </div>
+                    </div>
+                  ))}
+                  {isAiLoading && (
+                    <div className="flex justify-start">
+                       <div className="bg-white p-4 rounded-2xl border border-gray-100 rounded-bl-none shadow-sm flex items-center space-x-2">
+                          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></div>
+                          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                       </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+               </div>
+
+               <form onSubmit={askAi} className="p-4 bg-white border-t border-gray-100 flex items-center space-x-2">
+                  <input 
+                    type="text" 
+                    value={aiMessage}
+                    onChange={(e) => setAiMessage(e.target.value)}
+                    placeholder="Votre question..."
+                    className="flex-grow p-4 bg-gray-100 border-none rounded-2xl text-xs font-medium outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                  />
+                  <button 
+                    disabled={isAiLoading}
+                    className="p-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 shadow-lg disabled:opacity-50 transition-all"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                  </button>
+               </form>
+            </div>
+          )}
         </div>
       </main>
     </Layout>
