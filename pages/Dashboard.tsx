@@ -2,110 +2,143 @@
 import React from 'react';
 import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
-import { StudentProfile } from '../types';
+import { StudentProfile, Team } from '../types';
+import { STATUS_COLORS, STATUS_LABELS } from '../constants';
 
 interface DashboardProps {
   userProfile: StudentProfile | null;
+  userTeam: Team | null;
   onNavigate: (page: string) => void;
   onLogout: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ userProfile, onNavigate, onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate, onLogout }) => {
+  const isInTeam = !!userProfile?.currentTeamId;
+  const isLeader = userProfile?.teamRole === 'leader';
+
   return (
     <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
       <DashboardHeader 
         title={`Bienvenue, ${userProfile?.firstName}`} 
-        subtitle="Suivez votre progression et gérez votre équipe"
+        subtitle={isInTeam ? `Membre de l'équipe : ${userTeam?.name}` : "Prêt à transformer les communes tunisiennes ?"}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Profile Status Card */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Profil Étudiant</h3>
-              <span className={`px-2 py-1 text-xs rounded-full font-semibold ${userProfile?.isComplete ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex items-center justify-between mb-6">
+               <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Mon Profil</p>
+                <h3 className="font-black text-blue-900 uppercase">Candidat</h3>
+               </div>
+              <span className={`px-3 py-1 text-[10px] rounded-full font-black uppercase tracking-tight ${userProfile?.isComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
                 {userProfile?.isComplete ? 'Complet' : 'Incomplet'}
               </span>
             </div>
             {!userProfile?.isComplete && (
               <button 
                 onClick={() => onNavigate('profile')}
-                className="w-full mt-2 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors"
+                className="w-full py-4 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
               >
-                Compléter mon profil
+                Compléter le profil
               </button>
             )}
             {userProfile?.isComplete && (
-              <p className="text-sm text-gray-500">Votre profil est prêt pour le hackathon.</p>
+              <p className="text-xs text-gray-400 font-bold italic leading-relaxed">Votre profil est prêt. Vous pouvez postuler ou créer une équipe.</p>
             )}
           </div>
 
           {/* Team Status Card */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Équipe</h3>
-              <span className="px-2 py-1 text-xs rounded-full font-semibold bg-gray-100 text-gray-700">Aucune</span>
+          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex items-center justify-between mb-6">
+               <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Mon Équipe</p>
+                <h3 className="font-black text-blue-900 uppercase">{isLeader ? 'Chef d\'équipe' : isInTeam ? 'Membre' : 'Aucune'}</h3>
+               </div>
+              {userTeam && (
+                <span className={`px-3 py-1 text-[10px] rounded-full font-black uppercase tracking-tight ${STATUS_COLORS[userTeam.status]}`}>
+                  {STATUS_LABELS[userTeam.status]}
+                </span>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-2">
+            
+            {isInTeam ? (
               <button 
-                onClick={() => onNavigate('create-team')}
-                className="py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                onClick={() => onNavigate('team-workspace')}
+                className="w-full py-4 bg-blue-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-950 shadow-xl transition-all"
               >
-                Créer une équipe
+                Accéder au workspace
               </button>
-              <button 
-                onClick={() => onNavigate('find-team')}
-                className="py-2 border border-blue-600 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors"
-              >
-                Trouver une équipe
-              </button>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => onNavigate('create-team')}
+                  className="py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg transition-all"
+                >
+                  Créer
+                </button>
+                <button 
+                  onClick={() => onNavigate('find-team')}
+                  className="py-4 border-2 border-blue-600 text-blue-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all"
+                >
+                  Postuler
+                </button>
+              </div>
+            )}
+            {!isInTeam && userProfile?.applications.length! > 0 && (
+              <p className="text-[10px] text-orange-500 font-bold uppercase mt-4 text-center tracking-tight">
+                {userProfile?.applications.length} candidature(s) en attente
+              </p>
+            )}
           </div>
 
           {/* Application Status Card */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Candidature</h3>
-              <span className="px-2 py-1 text-xs rounded-full font-semibold bg-gray-100 text-gray-700">Non soumise</span>
+          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex items-center justify-between mb-6">
+               <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Candidature</p>
+                <h3 className="font-black text-blue-900 uppercase">Dossier</h3>
+               </div>
+              <span className="px-3 py-1 text-[10px] rounded-full font-black uppercase tracking-tight bg-gray-100 text-gray-400 border border-gray-200">
+                {userTeam?.status === 'submitted' ? 'Soumis' : 'Non Soumis'}
+              </span>
             </div>
-            <p className="text-xs text-gray-500 mb-4">Éligibilité : Requis une équipe de 5 membres.</p>
+            <p className="text-[10px] text-gray-500 mb-4 leading-relaxed font-bold uppercase">Éligibilité : {userTeam?.members.length || 0}/5 membres.</p>
             <button 
-              disabled
-              className="w-full py-2 bg-gray-100 text-gray-400 rounded-lg text-sm font-bold cursor-not-allowed"
+              disabled={!isLeader || userTeam?.members.length !== 5 || userTeam?.status === 'submitted'}
+              onClick={() => onNavigate('application-form')}
+              className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${(!isLeader || userTeam?.members.length !== 5 || userTeam?.status === 'submitted') ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xl shadow-emerald-50'}`}
             >
-              Soumettre (Inactif)
+              {userTeam?.status === 'submitted' ? 'Dossier déposé' : isLeader ? 'Déposer le dossier' : 'Réservé au chef'}
             </button>
           </div>
         </div>
 
         {/* Timeline */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-          <h3 className="font-bold text-gray-900 mb-6">Calendrier des Régionales</h3>
-          <div className="space-y-6">
-            <div className="flex">
-              <div className="flex flex-col items-center mr-4">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">1</div>
-                <div className="w-0.5 flex-grow bg-blue-100"></div>
-              </div>
-              <div className="pb-6">
-                <p className="font-bold text-blue-900">Sud-Est (Djerba)</p>
-                <p className="text-sm text-gray-500">3 Avril 2026</p>
-              </div>
+        <div className="bg-white border border-gray-100 rounded-3xl p-10 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
+          <h3 className="text-xl font-black text-blue-900 mb-10 uppercase tracking-tighter">Calendrier FNCT 2026</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="relative pl-8 border-l-4 border-blue-600">
+              <p className="text-[10px] font-black text-blue-600 uppercase mb-1">Sud-Est</p>
+              <p className="text-sm font-black text-gray-900">3 Avril</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase mt-2 tracking-widest">Djerba</p>
             </div>
-            <div className="flex">
-              <div className="flex flex-col items-center mr-4">
-                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 text-xs font-bold">2</div>
-                <div className="w-0.5 flex-grow bg-gray-100"></div>
-              </div>
-              <div className="pb-6">
-                <p className="font-bold text-gray-700">Centre-Est (Sfax)</p>
-                <p className="text-sm text-gray-500">6 Avril 2026</p>
-              </div>
+            <div className="relative pl-8 border-l-4 border-gray-100">
+              <p className="text-[10px] font-black text-gray-300 uppercase mb-1">Centre-Est</p>
+              <p className="text-sm font-black text-gray-400">6 Avril</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase mt-2 tracking-widest">Sfax</p>
             </div>
-            {/* Other dates simplified */}
-            <div className="flex items-center text-gray-400 text-sm italic ml-2">
-              Voir plus...
+            <div className="relative pl-8 border-l-4 border-gray-100">
+              <p className="text-[10px] font-black text-gray-300 uppercase mb-1">Centre-Ouest</p>
+              <p className="text-sm font-black text-gray-400">8 Avril</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase mt-2 tracking-widest">Kairouan</p>
+            </div>
+            <div className="relative pl-8 border-l-4 border-gray-100">
+              <p className="text-[10px] font-black text-gray-300 uppercase mb-1">Nord-Ouest</p>
+              <p className="text-sm font-black text-gray-400">15 Avril</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase mt-2 tracking-widest">Tabarka</p>
             </div>
           </div>
         </div>

@@ -75,7 +75,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, 
 
   return (
     <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
-      <DashboardHeader title="Mon Profil d'Expertise" subtitle="Précisez vos compétences métiers pour optimiser votre score d'équipe." />
+      <DashboardHeader title="Mon Profil Candidat" subtitle="Précisez vos domaines de prédilection pour optimiser votre score d'équipe." />
       
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         
@@ -83,7 +83,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, 
         <div className="bg-blue-900 rounded-[2.5rem] p-10 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between border border-blue-800 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-800 rounded-full blur-3xl -mr-32 -mt-32 opacity-20"></div>
           <div className="mb-8 md:mb-0 relative z-10">
-            <h2 className="text-3xl font-black uppercase tracking-tighter leading-tight">Expertise & Complétion</h2>
+            <h2 className="text-3xl font-black uppercase tracking-tighter leading-tight">Candidature & Complétion</h2>
             <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mt-2">Plus votre score est élevé, plus les chefs d'équipe vous solliciteront.</p>
           </div>
           <div className="flex items-center space-x-8 relative z-10">
@@ -177,7 +177,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, 
             {/* Compétences Métiers */}
             <section className="space-y-10 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: '300ms' }}>
               <h3 className="text-xl font-black text-blue-900 border-b pb-4 mb-2 uppercase tracking-tighter flex items-center justify-between">
-                <span>Expertises Métiers Thématiques</span>
+                <span>Domaines de Candidature</span>
                 <span className="text-[10px] bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full font-black uppercase tracking-widest">+30 pts max</span>
               </h3>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic mb-6">Sélectionnez vos spécialisations pour être prioritaire sur les projets municipaux.</p>
