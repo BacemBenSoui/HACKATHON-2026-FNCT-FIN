@@ -40,7 +40,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
 
       if (authError) throw authError;
 
-      alert('Inscription réussie ! Veuillez vérifier vos e-mails si la confirmation est activée, sinon connectez-vous.');
+      alert('Inscription réussie ! Veuillez vérifier vos e-mails pour la confirmation.');
       onNavigate('login');
     } catch (err: any) {
       setError(err.message || "Erreur lors de l'inscription");
@@ -57,9 +57,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             <div className="mx-auto w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-xl shadow-blue-200">
               <span className="text-white font-black text-xl">FNCT</span>
             </div>
-            <h2 className="text-center text-3xl font-black text-gray-900 tracking-tighter">Rejoindre l'aventure</h2>
+            <h2 className="text-center text-3xl font-black text-gray-900 tracking-tighter">Créer mon profil</h2>
             <p className="mt-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              Inscrivez-vous pour déclencher votre profil d'innovateur
+              Rejoignez le hackathon municipal 2026
             </p>
           </div>
 
@@ -73,93 +73,39 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Prénom</label>
-                <input 
-                  required 
-                  type="text" 
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-                  placeholder="Ex: Ahmed" 
-                />
+                <input required type="text" value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Nom</label>
-                <input 
-                  required 
-                  type="text" 
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-                  placeholder="Ex: Trabelsi" 
-                />
+                <input required type="text" value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email universitaire</label>
-              <input 
-                required 
-                type="email" 
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-                placeholder="etudiant@universite.tn" 
-              />
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email</label>
+              <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Téléphone</label>
-                <input 
-                  required 
-                  type="tel" 
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-                  placeholder="+216 22..." 
-                />
+                <input required type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="+216 ..." />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Université</label>
-                <input 
-                  required 
-                  type="text" 
-                  value={formData.university}
-                  onChange={(e) => setFormData({...formData, university: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-                  placeholder="INSAT, FST, ESC..." 
-                />
+                <input required type="text" value={formData.university} onChange={(e) => setFormData({...formData, university: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="INSAT, FST, ESC..." />
               </div>
             </div>
 
             <div>
               <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Mot de passe</label>
-              <input 
-                required 
-                type="password" 
-                value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
-              />
+              <input required type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" />
             </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex justify-center py-4 px-4 border border-transparent text-xs font-black rounded-2xl text-white bg-blue-600 hover:bg-blue-700 shadow-xl transition-all active:scale-95 uppercase tracking-widest mt-6 disabled:opacity-50"
-            >
-              {isLoading ? 'Création...' : 'Participer au hackathon'}
+            <button type="submit" disabled={isLoading} className="w-full py-4 bg-blue-600 text-white font-black text-xs rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest mt-6">
+              {isLoading ? 'Création...' : 'S\'inscrire'}
             </button>
           </form>
-
-          <div className="text-center pt-4">
-            <button 
-              onClick={() => onNavigate('login')}
-              className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
-            >
-              Déjà inscrit ? <span className="text-blue-600">Se connecter</span>
-            </button>
-          </div>
         </div>
       </div>
     </Layout>

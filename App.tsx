@@ -28,6 +28,7 @@ const App: React.FC = () => {
         setUserProfile(null);
         setUserRole(null);
         setUserTeam(null);
+        setCurrentPage('landing');
       }
       setIsLoading(false);
     });
@@ -36,76 +37,98 @@ const App: React.FC = () => {
   }, []);
 
   const fetchUserData = async (userId: string) => {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-    if (profile) {
-      // Fetch user's join requests to populate 'applications' array
-      const { data: requests } = await supabase
-        .from('join_requests')
-        .select('team_id')
-        .eq('student_id', userId);
+      if (profile) {
+        const { data: requests } = await supabase
+          .from('join_requests')
+          .select('team_id')
+          .eq('student_id', userId)
+          .eq('status', 'pending');
 
-      const formattedProfile: StudentProfile = {
-        id: profile.id,
-        firstName: profile.first_name || '',
-        lastName: profile.last_name || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        university: profile.university || '',
-        gender: profile.gender || 'O',
-        level: profile.level || '',
-        major: profile.major || '',
-        techSkills: profile.tech_skills || [],
-        metierSkills: profile.metier_skills || [],
-        isComplete: profile.is_complete || false,
-        teamRole: null,
-        currentTeamId: null,
-        applications: requests?.map(r => r.team_id) || [],
-      };
+        const formattedProfile: StudentProfile = {
+          id: profile.id,
+          firstName: profile.first_name || '',
+          lastName: profile.last_name || '',
+          email: profile.email || '',
+          phone: profile.phone || '', 
+          university: profile.university || '',
+          gender: profile.gender || 'O',
+          level: profile.level || '',
+          major: profile.major || '',
+          techSkills: profile.tech_skills || [],
+          metierSkills: profile.metier_skills || [],
+          otherSkills: profile.other_skills || '',
+          cvUrl: profile.cv_url || '',
+          isComplete: profile.is_complete || false,
+          teamRole: null,
+          currentTeamId: null,
+          applications: requests?.map(r => r.team_id) || [],
+        };
 
-      const { data: membership } = await supabase
-        .from('team_members')
-        .select('team_id, role, teams(*)')
-        .eq('profile_id', userId)
-        .maybeSingle();
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('team_id, role, teams(*)')
+          .eq('profile_id', userId)
+          .maybeSingle();
 
-      if (membership) {
-        formattedProfile.currentTeamId = membership.team_id;
-        formattedProfile.teamRole = membership.role as any;
-        
-        const teamData = membership.teams as any;
-        const { data: allMembers } = await supabase
-           .from('team_members')
-           .select('profile_id, profiles(first_name, last_name, tech_skills, metier_skills, gender), role')
-           .eq('team_id', membership.team_id);
+        if (membership && membership.teams) {
+          // Sécurité : Supabase peut retourner un tableau si la relation n'est pas détectée comme unique
+          const teamData = Array.isArray(membership.teams) ? membership.teams[0] : membership.teams;
+          
+          formattedProfile.currentTeamId = membership.team_id;
+          formattedProfile.teamRole = membership.role as any;
+          
+          const { data: allMembers } = await supabase
+             .from('team_members')
+             .select('profile_id, profiles(first_name, last_name, tech_skills, metier_skills, gender), role')
+             .eq('team_id', membership.team_id);
 
-        setUserTeam({
-          id: teamData.id,
-          name: teamData.name,
-          description: teamData.description,
-          leaderId: teamData.leader_id,
-          theme: teamData.theme,
-          status: teamData.status,
-          preferredRegion: teamData.preferred_region,
-          joinRequests: [],
-          requestedSkills: [],
-          members: allMembers?.map((m: any) => ({
-            id: m.profile_id,
-            name: `${m.profiles.first_name} ${m.profiles.last_name}`,
-            techSkills: m.profiles.tech_skills,
-            metierSkills: m.profiles.metier_skills,
-            gender: m.profiles.gender,
-            role: m.role
-          })) || []
-        });
+          setUserTeam({
+            id: teamData.id,
+            name: teamData.name,
+            description: teamData.description,
+            leaderId: teamData.leader_id,
+            theme: teamData.theme,
+            secondaryTheme: teamData.secondary_theme,
+            secondaryThemeDescription: teamData.secondary_theme_description,
+            status: teamData.status,
+            preferredRegion: teamData.preferred_region,
+            videoUrl: teamData.video_url,
+            pocUrl: teamData.poc_url,
+            motivationUrl: teamData.motivation_url,
+            joinRequests: [],
+            requestedSkills: teamData.requested_skills || [],
+            members: allMembers?.map((m: any) => ({
+              id: m.profile_id,
+              name: m.profiles ? `${m.profiles.first_name} ${m.profiles.last_name}` : 'Utilisateur',
+              techSkills: m.profiles?.tech_skills || [],
+              metierSkills: m.profiles?.metier_skills || [],
+              gender: m.profiles?.gender || 'O',
+              role: m.role
+            })) || []
+          });
+        } else {
+          setUserTeam(null);
+        }
+
+        setUserProfile(formattedProfile);
+        setUserRole(profile.role);
       }
+    } catch (e) {
+      console.error("Error fetching user data:", e);
+    }
+  };
 
-      setUserProfile(formattedProfile);
-      setUserRole(profile.role);
+  const refreshData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await fetchUserData(session.user.id);
     }
   };
 
@@ -115,8 +138,18 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('landing');
+    setIsLoading(true);
+    try {
+      await supabase.auth.signOut();
+      setUserProfile(null);
+      setUserRole(null);
+      setUserTeam(null);
+      navigate('landing');
+    } catch (e) {
+      console.error("Logout error:", e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isLoading) {
@@ -124,30 +157,35 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-blue-900 flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
            <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin"></div>
-           <p className="text-blue-100 font-black text-xs uppercase tracking-[0.3em]">FNCT 2026 - Vérification...</p>
+           <p className="text-blue-100 font-black text-xs uppercase tracking-[0.3em]">FNCT 2026 - Synchronisation...</p>
         </div>
       </div>
     );
   }
 
   const renderPage = () => {
-    switch (currentPage) {
+    let effectivePage = currentPage;
+    if (currentPage === 'dashboard' && userRole === 'admin') {
+      effectivePage = 'admin-dashboard';
+    }
+
+    switch (effectivePage) {
       case 'landing': return <LandingPage onNavigate={navigate} />;
       case 'login': return <LoginPage onLogin={() => navigate('dashboard')} onNavigate={navigate} />;
       case 'register': return <RegisterPage onNavigate={navigate} />;
       case 'dashboard': return <Dashboard userProfile={userProfile} userTeam={userTeam} onNavigate={navigate} onLogout={handleLogout} />;
-      case 'profile': return <ProfilePage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} />;
-      case 'find-team': return <FindTeamPage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} />;
-      case 'create-team': return <CreateTeamPage onNavigate={navigate} onLogout={handleLogout} onCreateTeam={() => {}} />;
-      case 'team-workspace': return <TeamWorkspace userProfile={userProfile} team={userTeam} setTeam={setUserTeam} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} />;
-      case 'application-form': return <ApplicationForm team={userTeam} setTeam={setUserTeam} onNavigate={navigate} onLogout={handleLogout} />;
+      case 'profile': return <ProfilePage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
+      case 'find-team': return <FindTeamPage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
+      case 'create-team': return <CreateTeamPage userProfile={userProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
+      case 'team-workspace': return <TeamWorkspace userProfile={userProfile} team={userTeam} setTeam={setUserTeam} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
+      case 'application-form': return <ApplicationForm team={userTeam} setTeam={setUserTeam} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
       case 'admin-dashboard': return <AdminDashboard onLogout={handleLogout} />;
       default: return <LandingPage onNavigate={navigate} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {renderPage()}
     </div>
   );

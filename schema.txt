@@ -1,99 +1,22 @@
--- COPIEZ TOUT LE CONTENU CI-DESSOUS DANS LE "SQL EDITOR" DE SUPABASE
 
--- 1. TYPES ÉNUMÉRÉS
-CREATE TYPE user_role AS ENUM ('student', 'admin');
-CREATE TYPE team_status AS ENUM ('incomplete', 'complete', 'submitted', 'selected', 'waitlist', 'rejected');
+-- 1. STRUCTURE : Ajout de la colonne pour le dossier de motivation (PDF)
+ALTER TABLE public.teams ADD COLUMN IF NOT EXISTS motivation_url text;
 
--- 2. TABLE PROFILES
-CREATE TABLE public.profiles (
-    id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-    first_name TEXT,
-    last_name TEXT,
-    email TEXT,
-    phone TEXT,
-    university TEXT,
-    gender TEXT,
-    level TEXT,
-    major TEXT,
-    tech_skills TEXT[] DEFAULT '{}',
-    metier_skills TEXT[] DEFAULT '{}',
-    other_skills TEXT,
-    cv_url TEXT,
-    is_complete BOOLEAN DEFAULT FALSE,
-    role user_role DEFAULT 'student',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 2. SECURITÉ : Nettoyage radical des anciennes politiques conflictuelles
+DROP POLICY IF EXISTS "Leaders can update their own team" ON public.teams;
+DROP POLICY IF EXISTS "Allow authenticated update" ON public.teams;
+DROP POLICY IF EXISTS "Enable update for all authenticated users" ON public.teams;
+DROP POLICY IF EXISTS "Enable all for authenticated users" ON public.teams;
 
--- 3. TABLE TEAMS
-CREATE TABLE public.teams (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    leader_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    theme TEXT NOT NULL,
-    secondary_theme TEXT,
-    secondary_theme_description TEXT,
-    preferred_region TEXT,
-    status team_status DEFAULT 'incomplete',
-    video_url TEXT,
-    poc_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 3. POLITIQUE UNIVERSELLE (Prototype FNCT 2026)
+-- Autorise SELECT, INSERT, UPDATE par tout utilisateur authentifié pour simplifier le prototype
+-- Cela inclut spécifiquement la permission de changer le champ 'status' de 'incomplete' à 'submitted'
+CREATE POLICY "Enable all for authenticated users" 
+ON public.teams 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
 
--- 4. TABLE TEAM_MEMBERS
-CREATE TABLE public.team_members (
-    team_id UUID REFERENCES public.teams(id) ON DELETE CASCADE,
-    profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    role TEXT CHECK (role IN ('leader', 'member')),
-    joined_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (team_id, profile_id),
-    CONSTRAINT unique_participant UNIQUE (profile_id)
-);
-
--- 5. TABLE JOIN_REQUESTS
-CREATE TABLE public.join_requests (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    team_id UUID REFERENCES public.teams(id) ON DELETE CASCADE,
-    student_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(team_id, student_id)
-);
-
--- 6. TRIGGERS ET FONCTIONS
-CREATE OR REPLACE FUNCTION check_team_limit() RETURNS TRIGGER AS $$
-BEGIN
-    IF (SELECT COUNT(*) FROM public.team_members WHERE team_id = NEW.team_id) >= 5 THEN
-        RAISE EXCEPTION 'Limite de 5 membres atteinte.';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_check_team_limit BEFORE INSERT ON public.team_members FOR EACH ROW EXECUTE FUNCTION check_team_limit();
-
-CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, first_name, last_name)
-  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'first_name', ''), COALESCE(NEW.raw_user_meta_data->>'last_name', ''));
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- 7. SÉCURITÉ RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+-- Active le RLS pour la table teams
 ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.join_requests ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Profiles viewable by auth" ON public.profiles FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Users update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Teams viewable by all" ON public.teams FOR SELECT USING (true);
-CREATE POLICY "Auth can create teams" ON public.teams FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Leader can update team" ON public.teams FOR UPDATE USING (auth.uid() = leader_id);
-CREATE POLICY "Members viewable by all" ON public.team_members FOR SELECT USING (true);
-CREATE POLICY "Leader adds members" ON public.team_members FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM public.teams WHERE id = team_id AND leader_id = auth.uid()));

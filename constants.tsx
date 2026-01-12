@@ -63,43 +63,20 @@ export const METIER_SKILLS: Record<ThemeType, string[]> = {
   ]
 };
 
-export const IDEAL_TEAMS: Record<ThemeType, { tech: string[], metier: string[] }> = {
-  'Gestion urbaine et territoriale': {
-    tech: ['Développement logiciel', 'Data / Intelligence Artificielle', 'Design UX / UI', 'Droit / Réglementation'],
-    metier: ['Urbanisme opérationnel']
-  },
-  'Déchets et économie circulaire': {
-    tech: ['Développement logiciel', 'Data / Intelligence Artificielle', 'Environnement / Climat', 'Communication / Pitch'],
-    metier: ['Gestion des déchets']
-  },
-  'Adaptation au changement climatique': {
-    tech: ['Développement logiciel', 'Data / Intelligence Artificielle', 'Environnement / Climat', 'Urbanisme / Aménagement', 'Gestion / Finance publique'],
-    metier: ['Hydrologie et gestion de l\'eau']
-  },
-  'Gestion administrative et financière': {
-    tech: ['Développement logiciel', 'Design UX / UI', 'Droit / Réglementation', 'Gestion / Finance publique'],
-    metier: ['Finances publiques locales']
-  },
-  'Patrimoine, culture et jeunesse': {
-    tech: ['Développement logiciel', 'Design UX / UI', 'Communication / Pitch'],
-    metier: ['Patrimoine et tourisme', 'Action culturelle']
-  }
-};
-
 export const STATUS_COLORS: Record<string, string> = {
   incomplete: 'bg-orange-100 text-orange-700 border-orange-200',
   complete: 'bg-blue-100 text-blue-700 border-blue-200',
-  submitted: 'bg-green-100 text-green-700 border-green-200',
-  selected: 'bg-emerald-800 text-white border-emerald-900',
+  submitted: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  selected: 'bg-blue-900 text-white border-blue-900',
   waitlist: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   rejected: 'bg-red-100 text-red-700 border-red-200',
 };
 
 export const STATUS_LABELS: Record<string, string> = {
-  incomplete: 'Incomplète',
-  complete: 'Complète',
-  submitted: 'Soumise',
-  selected: 'Sélectionnée',
-  waitlist: 'Attente',
-  rejected: 'Rejetée',
+  incomplete: 'Brouillon',
+  complete: 'Dossier Prêt',
+  submitted: 'Soumis',
+  selected: 'Validé',
+  waitlist: 'Liste d\'attente',
+  rejected: 'Refusé',
 };

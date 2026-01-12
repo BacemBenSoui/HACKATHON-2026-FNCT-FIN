@@ -1,35 +1,47 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
-import { REGIONS, THEMES, TECH_SKILLS } from '../constants';
-import { Team } from '../types';
+import { REGIONS, THEMES } from '../constants';
 import { supabase } from '../lib/supabase';
+import { StudentProfile } from '../types';
 
 interface CreateTeamPageProps {
+  userProfile: StudentProfile | null;
   onNavigate: (page: string) => void;
   onLogout: () => void;
-  onCreateTeam: (team: Partial<Team>) => void;
+  refreshData: () => Promise<void>;
 }
 
-const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ onNavigate, onLogout, onCreateTeam }) => {
+const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate, onLogout, refreshData }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     region: REGIONS[0].name,
-    theme: THEMES[0]
+    theme: THEMES[0],
+    secondaryTheme: THEMES[1] // Valeur par défaut pour respecter la contrainte NOT NULL
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const isInTeam = !!userProfile?.currentTeamId;
+
+  useEffect(() => {
+    if (isInTeam) {
+      onNavigate('dashboard');
+    }
+  }, [isInTeam]);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name || !formData.description) return alert("Veuillez remplir les champs obligatoires.");
+    
     setIsSubmitting(true);
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Utilisateur non authentifié");
+      if (!user) throw new Error("Session expirée.");
 
-      // 1. Insérer l'équipe
+      // Insertion atomique dans public.teams
+      // On respecte scrupuleusement le schéma public.teams fourni
       const { data: team, error: teamError } = await supabase
         .from('teams')
         .insert({
@@ -37,81 +49,76 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ onNavigate, onLogout, o
           description: formData.description,
           leader_id: user.id,
           theme: formData.theme,
+          secondary_theme: formData.secondaryTheme, // CHAMP NOT NULL
           preferred_region: formData.region,
           status: 'incomplete'
         })
-        .select()
-        .single();
+        .select().single();
 
       if (teamError) throw teamError;
 
-      // 2. Ajouter le leader comme premier membre
-      // Le trigger check_team_limit s'activera ici
+      // Insertion automatique du leader dans team_members
       const { error: memberError } = await supabase
         .from('team_members')
-        .insert({
-          team_id: team.id,
-          profile_id: user.id,
-          role: 'leader'
+        .insert({ 
+          team_id: team.id, 
+          profile_id: user.id, 
+          role: 'leader' 
         });
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        // Rollback manuel simple pour le prototype
+        await supabase.from('teams').delete().eq('id', team.id);
+        throw memberError;
+      }
 
-      alert("Équipe créée avec succès !");
+      await refreshData();
+      alert("Équipe FNCT créée !");
       onNavigate('team-workspace');
     } catch (err: any) {
-      alert("Erreur de création : " + err.message);
+      console.error("Erreur création équipe:", err);
+      alert("Erreur base de données : " + (err.message || "Action impossible."));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (isInTeam) return null;
+
   return (
     <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
-      <DashboardHeader 
-        title="Créer une Équipe" 
-        subtitle="Cette action écrira directement dans les tables 'teams' et 'team_members'."
-      />
-
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <form onSubmit={handleCreate} className="bg-white border border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden">
-          <div className="p-10 space-y-12">
-            <section>
-              <h3 className="text-xl font-black text-blue-900 mb-8 border-b pb-4 uppercase tracking-tighter">Identité de l'Équipe</h3>
-              <div className="space-y-8">
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-3 ml-1 tracking-widest">Nom de l'équipe *</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full px-6 py-4 bg-slate-800 border-none rounded-2xl text-white text-sm outline-none" 
-                    placeholder="Ex: Carthage Durable" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-3 ml-1 tracking-widest">Vision du projet *</label>
-                  <textarea 
-                    required 
-                    rows={4} 
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    className="w-full px-6 py-4 bg-slate-800 border-none rounded-3xl text-white text-sm outline-none" 
-                    placeholder="Innovation pour les communes..."
-                  ></textarea>
-                </div>
+      <DashboardHeader title="Nouveau Projet Municipal" subtitle="Lancez votre innovation pour les 50 ans de la FNCT." />
+      <main className="max-w-4xl mx-auto px-4 py-10">
+        <form onSubmit={handleCreate} className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
+          <div className="p-12 space-y-10">
+            <section className="space-y-6">
+              <h3 className="text-sm font-black text-blue-900 uppercase tracking-widest border-b pb-4">Identité du Projet</h3>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-gray-400 uppercase ml-1">Nom de l'innovation *</label>
+                <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full p-5 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Smart Municipality Djerba" />
+                <label className="block text-[10px] font-black text-gray-400 uppercase ml-1">Impact Territorial *</label>
+                <textarea required rows={4} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-5 bg-slate-900 text-white rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Décrivez comment votre solution aide la commune..."></textarea>
               </div>
             </section>
+            
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Région Administrative</label>
+                  <select value={formData.region} onChange={(e) => setFormData({...formData, region: e.target.value})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-2xl font-bold uppercase text-xs outline-none focus:bg-white focus:ring-2 focus:ring-blue-600">
+                    {REGIONS.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  </select>
+               </div>
+               <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Thématique Majeure</label>
+                  <select value={formData.theme} onChange={(e) => setFormData({...formData, theme: e.target.value as any})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-2xl font-bold uppercase text-xs outline-none focus:bg-white focus:ring-2 focus:ring-blue-600">
+                    {THEMES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+               </div>
+            </section>
           </div>
-
-          <div className="p-10 bg-gray-50 flex justify-end border-t">
-            <button 
-              type="submit"
-              disabled={isSubmitting}
-              className="px-12 py-4 bg-blue-600 text-white font-black text-xs rounded-2xl hover:bg-blue-700 shadow-2xl transition-all uppercase tracking-widest"
-            >
-              {isSubmitting ? 'Écriture tables...' : "Lancer l'Équipe"}
+          <div className="p-10 bg-gray-50 border-t flex justify-end">
+            <button type="submit" disabled={isSubmitting} className="px-16 py-6 bg-blue-600 text-white font-black text-xs rounded-2xl uppercase tracking-widest hover:bg-blue-700 shadow-xl transition-all active:scale-95 disabled:opacity-50">
+              {isSubmitting ? 'Initialisation...' : 'Valider & Recruter'}
             </button>
           </div>
         </form>
