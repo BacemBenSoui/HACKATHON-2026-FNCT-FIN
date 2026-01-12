@@ -21,7 +21,6 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Écouter les changements d'auth Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         await fetchUserData(session.user.id);
@@ -37,7 +36,6 @@ const App: React.FC = () => {
   }, []);
 
   const fetchUserData = async (userId: string) => {
-    // 1. Fetch Profile
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -45,6 +43,12 @@ const App: React.FC = () => {
       .single();
 
     if (profile) {
+      // Fetch user's join requests to populate 'applications' array
+      const { data: requests } = await supabase
+        .from('join_requests')
+        .select('team_id')
+        .eq('student_id', userId);
+
       const formattedProfile: StudentProfile = {
         id: profile.id,
         firstName: profile.first_name || '',
@@ -58,17 +62,16 @@ const App: React.FC = () => {
         techSkills: profile.tech_skills || [],
         metierSkills: profile.metier_skills || [],
         isComplete: profile.is_complete || false,
-        teamRole: null, // À calculer via team_members
+        teamRole: null,
         currentTeamId: null,
-        applications: [],
+        applications: requests?.map(r => r.team_id) || [],
       };
 
-      // 2. Fetch Team Membership
       const { data: membership } = await supabase
         .from('team_members')
         .select('team_id, role, teams(*)')
         .eq('profile_id', userId)
-        .single();
+        .maybeSingle();
 
       if (membership) {
         formattedProfile.currentTeamId = membership.team_id;
@@ -121,7 +124,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-blue-900 flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
            <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin"></div>
-           <p className="text-blue-100 font-black text-xs uppercase tracking-[0.3em]">FNCT 2026 - Initialisation...</p>
+           <p className="text-blue-100 font-black text-xs uppercase tracking-[0.3em]">FNCT 2026 - Vérification...</p>
         </div>
       </div>
     );

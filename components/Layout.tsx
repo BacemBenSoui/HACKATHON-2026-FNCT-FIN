@@ -9,6 +9,10 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onLogout, onNavigate }) => {
+  const openDidacticGuide = () => {
+    window.open('https://drive.google.com/file/d/1sHHNDVJC23Y5lvLLtr5pv5aoeekR4T-5/view?usp=sharing', '_blank');
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -41,7 +45,12 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onLogout
             <div className="flex items-center space-x-2 sm:space-x-8">
               {userType === 'public' ? (
                 <>
-                  <button className="text-gray-500 hover:text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] transition-colors hidden lg:block">Guide didactic</button>
+                  <button 
+                    onClick={openDidacticGuide}
+                    className="text-gray-500 hover:text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] transition-colors hidden lg:block"
+                  >
+                    Guide didacticiel
+                  </button>
                   <button 
                     onClick={() => onNavigate?.('login')}
                     className="bg-blue-600 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95"

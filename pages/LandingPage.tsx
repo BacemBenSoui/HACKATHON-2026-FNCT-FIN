@@ -8,6 +8,10 @@ interface LandingPageProps {
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
+  const openParticipationGuide = () => {
+    window.open('https://drive.google.com/file/d/1Omc4sAu6fPgWRfidcQ_nV8l_hQjRlCWO/view?usp=sharing', '_blank');
+  };
+
   return (
     <Layout onNavigate={onNavigate}>
       {/* Hero Section */}
@@ -90,9 +94,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500 to-transparent opacity-50"></div>
         <div className="max-w-3xl mx-auto px-4 relative z-10">
           <h2 className="text-4xl md:text-5xl font-black mb-8 tracking-tighter uppercase">Prêt à innover ?</h2>
-          <p className="text-blue-100 mb-12 text-lg font-medium">Téléchargez notre guide didactique et commencez votre aventure avec les municipalités tunisiennes.</p>
+          <p className="text-blue-100 mb-12 text-lg font-medium">Consultez notre guide de participation et commencez votre aventure avec les municipalités tunisiennes.</p>
           <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-6">
-            <button className="flex items-center space-x-3 px-8 py-4 bg-white text-blue-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-100 transition-all shadow-2xl">
+            <button 
+              onClick={openParticipationGuide}
+              className="flex items-center space-x-3 px-8 py-4 bg-white text-blue-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-100 transition-all shadow-2xl"
+            >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
               <span>Guide de Participation</span>
             </button>
