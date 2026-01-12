@@ -1,16 +1,52 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import Layout from '../components/Layout';
+import { supabase } from '../lib/supabase';
 
 interface RegisterPageProps {
   onNavigate: (page: string) => void;
 }
 
 const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
-  const handleSubmit = (e: React.FormEvent) => {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    university: '',
+    password: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Compte créé avec succès ! Connectez-vous.');
-    onNavigate('login');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            university: formData.university,
+            phone: formData.phone
+          }
+        }
+      });
+
+      if (authError) throw authError;
+
+      alert('Inscription réussie ! Veuillez vérifier vos e-mails si la confirmation est activée, sinon connectez-vous.');
+      onNavigate('login');
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'inscription");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -23,55 +59,96 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             </div>
             <h2 className="text-center text-3xl font-black text-gray-900 tracking-tighter">Rejoindre l'aventure</h2>
             <p className="mt-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              Inscrivez-vous pour commencer à bâtir votre équipe
+              Inscrivez-vous pour déclencher votre profil d'innovateur
             </p>
           </div>
+
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold uppercase tracking-tight">
+              {error}
+            </div>
+          )}
           
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Prénom</label>
-                <input required type="text" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="Ex: Ahmed" />
+                <input 
+                  required 
+                  type="text" 
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+                  placeholder="Ex: Ahmed" 
+                />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Nom</label>
-                <input required type="text" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="Ex: Trabelsi" />
+                <input 
+                  required 
+                  type="text" 
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+                  placeholder="Ex: Trabelsi" 
+                />
               </div>
             </div>
 
             <div>
               <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email universitaire</label>
-              <input required type="email" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="etudiant@universite.tn" />
+              <input 
+                required 
+                type="email" 
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+                placeholder="etudiant@universite.tn" 
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Téléphone</label>
-                <input required type="tel" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="+216 22..." />
+                <input 
+                  required 
+                  type="tel" 
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+                  placeholder="+216 22..." 
+                />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Université</label>
-                <input required type="text" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" placeholder="INSAT, FST, ESC..." />
+                <input 
+                  required 
+                  type="text" 
+                  value={formData.university}
+                  onChange={(e) => setFormData({...formData, university: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+                  placeholder="INSAT, FST, ESC..." 
+                />
               </div>
             </div>
 
             <div>
               <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Mot de passe</label>
-              <input required type="password" title="8 caractères min" className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" />
-            </div>
-
-            <div className="flex items-center pt-2">
-              <input id="terms" required type="checkbox" className="h-4 w-4 text-blue-600 border-gray-300 rounded-lg focus:ring-blue-500" />
-              <label htmlFor="terms" className="ml-3 block text-[11px] font-bold text-gray-500 leading-tight">
-                J'accepte les conditions d'utilisation du hackathon FNCT 2026 et la charte d'innovation citoyenne.
-              </label>
+              <input 
+                required 
+                type="password" 
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-800 border-none rounded-xl text-white text-sm font-medium focus:ring-4 focus:ring-blue-100 outline-none" 
+              />
             </div>
 
             <button
               type="submit"
-              className="w-full flex justify-center py-4 px-4 border border-transparent text-xs font-black rounded-2xl text-white bg-blue-600 hover:bg-blue-700 shadow-xl transition-all active:scale-95 uppercase tracking-widest mt-6"
+              disabled={isLoading}
+              className="w-full flex justify-center py-4 px-4 border border-transparent text-xs font-black rounded-2xl text-white bg-blue-600 hover:bg-blue-700 shadow-xl transition-all active:scale-95 uppercase tracking-widest mt-6 disabled:opacity-50"
             >
-              Participer au hackathon
+              {isLoading ? 'Création...' : 'Participer au hackathon'}
             </button>
           </form>
 

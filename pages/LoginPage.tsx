@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import Layout from '../components/Layout';
 import { UserRole } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface LoginPageProps {
   onLogin: (role: UserRole) => void;
@@ -11,13 +12,28 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigate }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.includes('admin')) {
-      onLogin('admin');
-    } else {
-      onLogin('student');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+      
+      // Le changement d'état est géré par onAuthStateChange dans App.tsx
+      onLogin('student'); 
+    } catch (err: any) {
+      setError(err.message || "Erreur de connexion");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -34,6 +50,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigate }) => {
               Accédez à votre espace hackathon
             </p>
           </div>
+
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold uppercase tracking-tight">
+              {error}
+            </div>
+          )}
+
           <form className="mt-10 space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-3">
               <div>
@@ -60,19 +83,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigate }) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs py-2">
-              <div className="flex items-center">
-                <input id="remember-me" type="checkbox" className="h-4 w-4 text-blue-600 border-gray-300 rounded-lg focus:ring-blue-500" />
-                <label htmlFor="remember-me" className="ml-2 block text-gray-500 font-bold">Rester connecté</label>
-              </div>
-              <a href="#" className="font-black text-blue-600 hover:text-blue-500 uppercase tracking-tighter">Oublié ?</a>
-            </div>
-
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-xs font-black rounded-2xl text-white bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95 uppercase tracking-widest"
+              disabled={isLoading}
+              className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-xs font-black rounded-2xl text-white bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95 uppercase tracking-widest disabled:opacity-50"
             >
-              Se connecter
+              {isLoading ? 'Connexion...' : 'Se connecter'}
             </button>
           </form>
           
