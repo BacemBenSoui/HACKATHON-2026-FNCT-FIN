@@ -50,7 +50,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
     'bg-[#fbbf24]'  // Jaune
   ];
 
-  // Calcul didactique de la progression
   const teamProgress = useMemo(() => {
     if (!userTeam) return null;
     const members = userTeam.members || [];
@@ -81,7 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
       { 
         label: "Soumission Finale", 
         desc: "Validation par le Chef de Projet.", 
-        done: userTeam.status === 'submitted' || userTeam.status === 'selected' || userTeam.status === 'waitlist',
+        done: ['submitted', 'selected', 'waitlist'].includes(userTeam.status),
         status: userTeam.status === 'submitted' ? "Déposé" : userTeam.status === 'selected' ? "Validé" : "En attente",
         color: fnctColors[3]
       }
@@ -110,7 +109,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* BANNER STATUS POUR TOUTE L'ÉQUIPE */}
         {isInTeam && userTeam && (
           <div className={`mb-10 p-6 rounded-[8px] border flex items-center justify-between shadow-sm animate-in slide-in-from-top-4 duration-500 ${STATUS_COLORS[userTeam.status]}`}>
             <div className="flex items-center space-x-6">
@@ -127,7 +125,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {/* PROFIL CARD - BLEU FONCÉ */}
           <div className={`${fnctColors[0]} ${cardBaseStyle}`}>
             <div className="text-white">
               <div className="flex justify-between items-start mb-6">
@@ -141,7 +138,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
             <button onClick={() => onNavigate('profile')} className="w-full py-4 bg-white text-[#1e3a8a] text-[10px] font-black uppercase rounded-lg hover:bg-blue-50 transition-all">Gérer mon profil</button>
           </div>
 
-          {/* TEAM CARD - BLEU CIEL */}
           <div className={`${fnctColors[1]} ${cardBaseStyle}`}>
              <div className="text-white">
               <div className="flex justify-between items-start mb-6">
@@ -159,17 +155,22 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
                     onClick={() => onNavigate('create-team')} 
                     disabled={hasPendingApplications}
                     className={`py-4 text-[10px] font-black uppercase rounded-lg transition-all ${hasPendingApplications ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-white text-[#38bdf8] shadow-lg'}`}
+                    title={hasPendingApplications ? "Vous ne pouvez pas créer d'équipe car vous avez postulé ailleurs." : ""}
                   >
                     Créer
                   </button>
-                  <button onClick={() => onNavigate('find-team')} className="py-4 border border-white text-white text-[10px] font-black uppercase rounded-lg hover:bg-white/10">Postuler</button>
+                  <button 
+                    onClick={() => onNavigate('find-team')} 
+                    className="py-4 border border-white text-white text-[10px] font-black uppercase rounded-lg hover:bg-white/10"
+                  >
+                    Postuler
+                  </button>
                 </div>
-                {hasPendingApplications && <p className="text-[8px] text-white font-bold uppercase text-center mt-2">⚠️ Candidature en cours</p>}
+                {hasPendingApplications && <p className="text-[8px] text-white font-bold uppercase text-center mt-2">⚠️ Candidature(s) active(s) : Création bloquée</p>}
               </div>
             )}
           </div>
 
-          {/* DOSSIER CARD - ROUGE */}
           <div className={`${fnctColors[2]} ${cardBaseStyle}`}>
             <div className="text-white">
               <h3 className="text-[10px] font-black text-white/70 uppercase tracking-widest mb-6">Dossier Final</h3>
@@ -188,7 +189,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
           </div>
         </div>
 
-        {/* SECTION DIDACTIEL : SUIVI DE L'ÉQUIPE */}
         {isInTeam && teamProgress && (
           <div className="bg-white border border-[#E0E0E0] rounded-[8px] overflow-hidden shadow-[0_2px_4px_rgba(0,0,0,0.1)] mb-10">
             <div className="px-10 py-6 border-b bg-blue-900 flex justify-between items-center">
@@ -232,7 +232,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
           </div>
         )}
 
-        {/* MY APPLICATIONS HISTORY */}
         {!isInTeam && (
           <div className="bg-white border border-[#E0E0E0] rounded-[8px] overflow-hidden shadow-[0_2px_4px_rgba(0,0,0,0.1)]">
             <div className="px-8 py-5 border-b bg-gray-50">

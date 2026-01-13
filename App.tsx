@@ -25,6 +25,7 @@ const App: React.FC = () => {
       if (session) {
         await fetchUserData(session.user.id);
       } else {
+        // Reset complet lors de la perte de session
         setUserProfile(null);
         setUserRole(null);
         setUserTeam(null);
@@ -78,7 +79,6 @@ const App: React.FC = () => {
           .maybeSingle();
 
         if (membership && membership.teams) {
-          // Sécurité : Supabase peut retourner un tableau si la relation n'est pas détectée comme unique
           const teamData = Array.isArray(membership.teams) ? membership.teams[0] : membership.teams;
           
           formattedProfile.currentTeamId = membership.team_id;
@@ -138,15 +138,19 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    if (!confirm("Voulez-vous vraiment vous déconnecter ?")) return;
+    
     setIsLoading(true);
     try {
       await supabase.auth.signOut();
+      // Le state est nettoyé par onAuthStateChange, mais on force ici par sécurité
       setUserProfile(null);
       setUserRole(null);
       setUserTeam(null);
       navigate('landing');
     } catch (e) {
       console.error("Logout error:", e);
+      alert("Erreur lors de la déconnexion.");
     } finally {
       setIsLoading(false);
     }
@@ -179,7 +183,7 @@ const App: React.FC = () => {
       case 'create-team': return <CreateTeamPage userProfile={userProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
       case 'team-workspace': return <TeamWorkspace userProfile={userProfile} team={userTeam} setTeam={setUserTeam} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
       case 'application-form': return <ApplicationForm team={userTeam} setTeam={setUserTeam} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'admin-dashboard': return <AdminDashboard onLogout={handleLogout} />;
+      case 'admin-dashboard': return <AdminDashboard onLogout={handleLogout} onNavigate={navigate} />;
       default: return <LandingPage onNavigate={navigate} />;
     }
   };

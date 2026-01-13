@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 
 type AdminTab = 'stats' | 'teams' | 'jury';
 
-const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) => void }> = ({ onLogout, onNavigate }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
   const [teams, setTeams] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -23,7 +23,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const fetchAdminData = async () => {
     setIsLoading(true);
     try {
-      // Fetch teams with their leader info and members count
       const { data: teamsData } = await supabase
         .from('teams')
         .select(`
@@ -36,7 +35,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           )
         `);
       
-      // Fetch all profiles for global stats
       const { data: profilesData } = await supabase
         .from('profiles')
         .select('*');
@@ -50,7 +48,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     }
   };
 
-  // 1. STATISTIQUES GLOBAL
   const stats = useMemo(() => {
     return {
       totalCandidates: profiles.length,
@@ -61,7 +58,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     };
   }, [teams, profiles]);
 
-  // 2. MATRICE RÉGION / THÈME
   const distributionMatrix = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {};
     REGIONS.forEach(r => {
@@ -79,7 +75,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     return matrix;
   }, [teams]);
 
-  // 3. STATISTIQUES D'EXPERTISE
   const expertiseStats = useMemo(() => {
     const counts: Record<string, number> = {};
     profiles.forEach(p => {
@@ -91,7 +86,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   }, [profiles]);
 
   const calculateScore = (team: any) => {
-    const baseScore = (team.members?.length / 5) * 40; // Effectif (40pts)
+    const baseScore = (team.members?.length / 5) * 40; 
     const bonusSkill = (team.requested_skills?.length || 0) * 5;
     const evalScore = evaluationScores[team.id] || 0;
     return Math.min(Math.round(baseScore + bonusSkill + evalScore), 100);
@@ -114,15 +109,13 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   );
 
   return (
-    <Layout userType="admin" onLogout={onLogout}>
+    <Layout userType="admin" onLogout={onLogout} onNavigate={onNavigate}>
       <DashboardHeader 
         title="Centre de Pilotage FNCT 2026" 
         subtitle="Saison Innovation Territoriale - 50 ans de la Fédération."
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
-        
-        {/* ONGLES DE NAVIGATION ADMIN */}
         <div className="flex space-x-2 bg-gray-100 p-2 rounded-[2rem] w-fit">
           <button 
             onClick={() => setActiveTab('stats')}
@@ -144,10 +137,8 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </button>
         </div>
 
-        {/* CONTENU : VUE D'ENSEMBLE (STATISTIQUES) */}
         {activeTab === 'stats' && (
           <div className="space-y-10 animate-in fade-in duration-500">
-            {/* Cartes Stats */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               {[
                 { label: "Candidats", val: stats.totalCandidates, color: "text-blue-600" },
@@ -163,7 +154,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               ))}
             </div>
 
-            {/* Matrice Région / Thème */}
             <section className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden">
                <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
                   <h3 className="text-xs font-black text-blue-900 uppercase tracking-widest">Distribution Régionale par Thème</h3>
@@ -199,7 +189,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* CONTENU : GESTION DES ÉQUIPES */}
         {activeTab === 'teams' && (
           <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4">
              <table className="w-full text-left">
@@ -248,10 +237,8 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* CONTENU : JURY & ÉVALUATION */}
         {activeTab === 'jury' && (
           <div className="space-y-10 animate-in fade-in duration-500">
-             {/* Stats Expertises */}
              <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
                 <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-8 border-b pb-4">Top Expertises présentes sur la plateforme</h3>
                 <div className="flex flex-wrap gap-4">
@@ -312,7 +299,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* MODAL FICHE COMPLÈTE ÉVALUATION */}
         {evaluatingTeam && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/90 backdrop-blur-md overflow-y-auto">
              <div className="bg-white w-full max-w-6xl rounded-[4rem] shadow-2xl overflow-hidden flex flex-col h-[90vh] animate-in zoom-in-95 duration-300">
@@ -328,8 +314,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
                 <div className="flex-grow overflow-y-auto p-12 space-y-16">
                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
-                      
-                      {/* Ressources & Liens */}
                       <div className="space-y-10">
                          <section className="space-y-4">
                             <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Ressources Déposées</h4>
@@ -380,7 +364,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                          </section>
                       </div>
 
-                      {/* Pitch & Membres */}
                       <div className="lg:col-span-2 space-y-12">
                          <section className="space-y-4">
                             <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Résumé de l'Impact</h4>
@@ -421,7 +404,6 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* MODAL MINI-FICHE CANDIDAT */}
         {selectedCandidate && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
              <div className="absolute inset-0 bg-blue-900/80 backdrop-blur-lg" onClick={() => setSelectedCandidate(null)}></div>

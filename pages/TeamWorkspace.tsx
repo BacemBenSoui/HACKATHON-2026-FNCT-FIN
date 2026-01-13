@@ -4,7 +4,10 @@ import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
 import { Team, StudentProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
+import { THEMES, TECH_SKILLS } from '../constants';
 import { supabase } from '../lib/supabase';
+
+type WorkspaceTab = 'overview' | 'recruitment' | 'communication' | 'ai';
 
 interface TeamWorkspaceProps {
   userProfile: StudentProfile | null;
@@ -17,20 +20,26 @@ interface TeamWorkspaceProps {
 }
 
 const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTeam, setUserProfile, onNavigate, onLogout, refreshData }) => {
-  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
   const [aiHistory, setAiHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  
   const [requests, setRequests] = useState<any[]>([]);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
-  
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<any | null>(null);
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  
+  // States pour l'édition leader
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    description: team?.description || '',
+    requested_skills: team?.requestedSkills || []
+  });
 
   const isLeader = userProfile?.teamRole === 'leader';
   const membersCount = team?.members.length || 0;
   const isFull = membersCount >= 5;
-  const isSubmitted = team?.status === 'submitted' || team?.status === 'selected' || team?.status === 'rejected';
+  const isSubmitted = ['submitted', 'selected', 'rejected'].includes(team?.status || '');
 
   const compliance = useMemo(() => {
     if (!team) return null;
@@ -54,32 +63,36 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   }, [team?.id, isLeader]);
 
   const fetchJoinRequests = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('join_requests')
       .select('*, profiles(first_name, last_name, university, level, major, metier_skills, other_skills, gender)')
       .eq('team_id', team!.id)
       .eq('status', 'pending');
-    
-    if (error) console.error("Erreur requêtes:", error);
-    else setRequests(data || []);
+    setRequests(data || []);
   };
 
   const fetchMemberProfile = async (profileId: string) => {
-    setIsProfileLoading(true);
+    const { data } = await supabase.from('profiles').select('*').eq('id', profileId).single();
+    setSelectedMemberProfile(data);
+  };
+
+  const handleUpdateTeamInfo = async () => {
+    if (!team || !isLeader || isSubmitted) return;
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', profileId)
-        .single();
+      const { error } = await supabase
+        .from('teams')
+        .update({
+          description: editData.description,
+          requested_skills: editData.requested_skills
+        })
+        .eq('id', team.id);
       
       if (error) throw error;
-      setSelectedMemberProfile(data);
-    } catch (err) {
-      console.error("Erreur profil membre:", err);
-      alert("Impossible de charger la fiche candidat.");
-    } finally {
-      setIsProfileLoading(false);
+      if (refreshData) await refreshData();
+      setIsEditing(false);
+      alert("Informations mises à jour.");
+    } catch (err: any) {
+      alert("Erreur : " + err.message);
     }
   };
 
@@ -88,79 +101,47 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     setProcessingRequestId(request.id);
 
     try {
-      // 1. VÉRIFICATION CRITIQUE DU NOMBRE RÉEL EN BASE (Sécurité anti-plantage)
-      const { count, error: countError } = await supabase
+      // 1. Vérification si le candidat est déjà dans une autre équipe (Règle 1)
+      const { data: existingMembership } = await supabase
         .from('team_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', team.id);
+        .select('team_id')
+        .eq('profile_id', request.student_id)
+        .maybeSingle();
 
-      if (countError) throw countError;
-
-      if (count !== null && count >= 5) {
-        alert("Action impossible : L'équipe est déjà au complet (5 membres).");
-        // Auto-refus préventif pour les autres si quota atteint
-        await supabase.from('join_requests').update({ status: 'rejected' }).eq('team_id', team.id).eq('status', 'pending');
+      if (existingMembership) {
+        alert("Action Impossible : Ce candidat a déjà accepté une place dans une autre équipe.");
+        await supabase.from('join_requests').update({ status: 'rejected' }).eq('id', request.id);
         await fetchJoinRequests();
         return;
       }
 
-      // 2. INSERTION DU MEMBRE
-      const { error: memberError } = await supabase
+      // 2. Vérification quota équipe
+      const { count } = await supabase
         .from('team_members')
-        .insert({
-          team_id: team.id,
-          profile_id: request.student_id,
-          role: 'member'
-        });
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', team.id);
 
+      if (count !== null && count >= 5) {
+        alert("L'équipe est déjà complète.");
+        return;
+      }
+
+      // 3. Intégration irréversible
+      const { error: memberError } = await supabase.from('team_members').insert({
+        team_id: team.id,
+        profile_id: request.student_id,
+        role: 'member'
+      });
       if (memberError) throw memberError;
 
-      // 3. MISE À JOUR DE LA REQUÊTE
-      const { error: requestError } = await supabase
-        .from('join_requests')
-        .update({ status: 'accepted' })
-        .eq('id', request.id);
-        
-      if (requestError) throw requestError;
-
-      // 4. LOGIQUE D'AUTO-REFUS : Si on vient d'ajouter le 5ème
-      const newTotal = (count || 0) + 1;
-      if (newTotal >= 5) {
-        await supabase
-          .from('join_requests')
-          .update({ status: 'rejected' })
-          .eq('team_id', team.id)
-          .eq('status', 'pending');
-      }
-
-      alert(`✅ Candidat approuvé ! Effectif : ${newTotal}/5`);
+      await supabase.from('join_requests').update({ status: 'accepted' }).eq('id', request.id);
       
-      // 5. RAFRAÎCHISSEMENT ORDONNÉ
-      if (refreshData) {
-        await refreshData();
-      }
+      if (refreshData) await refreshData();
       await fetchJoinRequests();
+      alert(`✅ ${request.profiles.first_name} a rejoint l'équipe.`);
       
     } catch (err: any) {
-      console.error("Erreur critique approbation:", err);
-      alert("Erreur de synchronisation : " + (err.message || "Vérifiez vos permissions."));
-    } finally {
-      setProcessingRequestId(null);
-    }
-  };
-
-  const handleRejectRequest = async (requestId: string) => {
-    setProcessingRequestId(requestId);
-    try {
-      const { error } = await supabase
-        .from('join_requests')
-        .update({ status: 'rejected' })
-        .eq('id', requestId);
-      
-      if (error) throw error;
-      await fetchJoinRequests();
-    } catch (err: any) {
-      alert("Erreur lors du refus : " + err.message);
+      alert("Erreur critique : " + err.message);
     } finally {
       setProcessingRequestId(null);
     }
@@ -169,12 +150,10 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   const askAi = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!aiMessage.trim() || !team) return;
-
     const userText = aiMessage;
     setAiHistory(prev => [...prev, { role: 'user', text: userText }]);
     setAiMessage('');
     setIsAiLoading(true);
-
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
@@ -183,16 +162,11 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           parts: [{ text: m.text }],
           role: m.role === 'user' ? 'user' : 'model'
         })),
-        config: {
-          systemInstruction: `Tu es le Coach IA FNCT 2026. Tu aides l'équipe sur le thème ${team.theme}.`,
-          tools: [{ googleSearch: {} }]
-        }
+        config: { systemInstruction: `Tu es le Coach IA FNCT. Thème: ${team.theme}.` }
       });
-      
-      let replyText = response.text || "Erreur de réponse de l'IA.";
-      setAiHistory(prev => [...prev, { role: 'model', text: replyText }]);
+      setAiHistory(prev => [...prev, { role: 'model', text: response.text || "Service IA indisponible." }]);
     } catch (error) {
-      setAiHistory(prev => [...prev, { role: 'model', text: "Service IA indisponible." }]);
+      setAiHistory(prev => [...prev, { role: 'model', text: "Erreur IA." }]);
     } finally {
       setIsAiLoading(false);
     }
@@ -203,280 +177,238 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   return (
     <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate} currentTeamId={team.id}>
       <DashboardHeader 
-        title={`Espace de Pilotage : ${team.name}`} 
+        title={`Espace Pilotage : ${team.name}`} 
         subtitle={`${team.theme} | Région : ${team.preferredRegion}`}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
         
-        {/* Résumé de conformité */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className={`p-8 rounded-[2.5rem] border ${compliance?.fiveMembers ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-100'} transition-colors`}>
-            <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">Effectif (Requis: 5)</p>
-            <p className={`text-3xl font-black ${compliance?.fiveMembers ? 'text-emerald-600' : 'text-blue-900'}`}>{team.members.length}/5</p>
-          </div>
-          <div className={`p-8 rounded-[2.5rem] border ${compliance?.twoWomen ? 'bg-emerald-50 border-emerald-100' : 'bg-orange-50 border-orange-100'} transition-colors`}>
-            <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mixité (Requis: 2F)</p>
-            <p className={`text-3xl font-black ${compliance?.twoWomen ? 'text-emerald-600' : 'text-orange-600'}`}>{team.members.filter(m => m.gender === 'F').length}/2</p>
-          </div>
-          <div className="p-8 rounded-[2.5rem] border bg-gray-50 border-gray-100 md:col-span-2 flex items-center justify-between">
-            <div>
-               <p className="text-[9px] font-black uppercase text-gray-400 mb-1 tracking-widest">Statut du Dossier</p>
-               <p className="text-xl font-black text-blue-900 uppercase">{team.status === 'submitted' ? 'Dossier Transmis' : 'En cours de constitution'}</p>
-            </div>
-            {isLeader && isFull && !isSubmitted && (
-              <button onClick={() => onNavigate('application-form')} className="px-6 py-3 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 shadow-xl animate-pulse">
-                Finaliser le dépôt
-              </button>
-            )}
-          </div>
+        {/* Navigation Onglets */}
+        <div className="flex space-x-2 bg-gray-100 p-2 rounded-[2rem] w-fit">
+          <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Équipe & Projet</button>
+          {isLeader && !isFull && <button onClick={() => setActiveTab('recruitment')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'recruitment' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Recrutement ({requests.length})</button>}
+          {isLeader && <button onClick={() => setActiveTab('communication')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'communication' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Communication</button>}
+          <button onClick={() => setActiveTab('ai')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'ai' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Coach IA</button>
         </div>
 
-        {/* Liste des membres actuels */}
-        <section className="bg-white border border-gray-100 rounded-[3rem] shadow-sm overflow-hidden">
-          <div className="px-10 py-6 bg-gray-50 border-b">
-            <h3 className="text-xs font-black text-blue-900 uppercase tracking-widest">L'Équipe Actuelle</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-5 divide-x divide-gray-100">
-            {team.members.map((m, i) => (
-              <div key={i} className="p-8 flex flex-col items-center text-center space-y-4 hover:bg-blue-50/20 transition-colors">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-xl uppercase ${m.role === 'leader' ? 'bg-blue-900 text-white' : 'bg-blue-100 text-blue-600'}`}>
-                  {m.name.charAt(0)}
-                </div>
-                <button 
-                  onClick={() => fetchMemberProfile(m.id)}
-                  className="group"
-                >
-                  <p className="text-[11px] font-black text-gray-900 uppercase leading-tight group-hover:text-blue-600 group-hover:underline transition-all decoration-2 underline-offset-4">{m.name}</p>
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mt-1 tracking-widest">{m.role === 'leader' ? 'Chef de Projet' : 'Expert'}</p>
-                </button>
-                <div className="flex flex-wrap justify-center gap-1">
-                  {m.techSkills?.slice(0, 2).map(s => <span key={s} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[7px] font-black uppercase rounded">{s}</span>)}
-                </div>
-              </div>
-            ))}
-            {Array.from({ length: 5 - team.members.length }).map((_, i) => (
-              <div key={`empty-${i}`} className="p-8 flex flex-col items-center justify-center border-dashed border-2 border-gray-50 text-gray-200">
-                 <p className="text-[8px] font-black uppercase tracking-widest">Poste vacant</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* TABLEAU DES CANDIDATURES EN ATTENTE */}
-        {isLeader && !isFull && (
-          <section className="bg-white border border-gray-100 rounded-[3rem] shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="px-10 py-8 border-b bg-blue-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-widest">Demandes d'adhésion en attente</h3>
-                <p className="text-[9px] font-bold uppercase text-blue-300 mt-1">Gérez vos futurs talents pour atteindre l'effectif de 5</p>
-              </div>
-              <span className="px-4 py-1.5 bg-white/10 rounded-full text-[10px] font-black uppercase">{requests.length} Postulants</span>
+        {/* CONTENU : VUE D'ENSEMBLE & ÉDITION */}
+        {activeTab === 'overview' && (
+          <div className="space-y-10">
+            {/* Conformité */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+               <div className={`p-8 rounded-[8px] border border-[#E0E0E0] shadow-sm ${compliance?.fiveMembers ? 'bg-emerald-50' : 'bg-white'}`}>
+                  <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">Effectif (5)</p>
+                  <p className="text-2xl font-black text-blue-900">{team.members.length}/5</p>
+               </div>
+               <div className={`p-8 rounded-[8px] border border-[#E0E0E0] shadow-sm ${compliance?.twoWomen ? 'bg-emerald-50' : 'bg-white'}`}>
+                  <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mixité (2F)</p>
+                  <p className="text-2xl font-black text-blue-900">{team.members.filter(m => m.gender === 'F').length}/2</p>
+               </div>
+               <div className="p-8 rounded-[8px] border border-[#E0E0E0] shadow-sm bg-white md:col-span-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Thème FNCT</p>
+                    <p className="text-xs font-black text-blue-900 uppercase">{team.theme}</p>
+                  </div>
+                  {isLeader && !isSubmitted && (
+                    <button onClick={() => setIsEditing(!isEditing)} className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">
+                      {isEditing ? 'Annuler' : 'Modifier les infos'}
+                    </button>
+                  )}
+               </div>
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-50 border-b text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                    <th className="px-10 py-5">Candidat</th>
-                    <th className="px-10 py-5">Université & Niveau</th>
-                    <th className="px-10 py-5">Expertises Métier</th>
-                    <th className="px-10 py-5">Autres Atouts</th>
-                    <th className="px-10 py-5 text-right">Décision</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+
+            {/* Fiche Projet Leader (Édition) */}
+            {isLeader && isEditing ? (
+              <section className="bg-white p-10 rounded-[8px] border border-[#E0E0E0] shadow-sm animate-in fade-in">
+                 <h3 className="text-[11px] font-black text-blue-900 uppercase tracking-widest border-b pb-4 mb-8">Édition du Projet (Restreinte)</h3>
+                 <div className="space-y-6">
+                    <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Description / Pitch Impact</label>
+                       <textarea value={editData.description} onChange={(e) => setEditData({...editData, description: e.target.value})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600" rows={4} />
+                    </div>
+                    <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase mb-4">Profils recherchés (Compétences Tech/Métier)</label>
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {TECH_SKILLS.map(skill => (
+                            <button key={skill} onClick={() => setEditData({...editData, requested_skills: editData.requested_skills.includes(skill) ? editData.requested_skills.filter(s => s !== skill) : [...editData.requested_skills, skill]})} className={`p-2 rounded-lg text-[8px] font-black uppercase border transition-all ${editData.requested_skills.includes(skill) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
+                               {skill}
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+                    <div className="pt-6 flex justify-end">
+                       <button onClick={handleUpdateTeamInfo} className="px-10 py-4 bg-blue-900 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-blue-800 transition-all">Sauvegarder les modifications</button>
+                    </div>
+                 </div>
+              </section>
+            ) : (
+              <section className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden">
+                <div className="p-8 bg-gray-50 border-b">
+                   <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Composition Nominative</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-5 divide-x divide-gray-100">
+                   {team.members.map((m, i) => (
+                     <div key={i} className="p-8 text-center flex flex-col items-center group">
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl mb-4 ${m.role === 'leader' ? 'bg-blue-900 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                           {m.name.charAt(0)}
+                        </div>
+                        <button onClick={() => fetchMemberProfile(m.id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline">{m.name}</button>
+                        <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">{m.role === 'leader' ? 'Chef de Projet' : 'Expert'}</p>
+                     </div>
+                   ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* CONTENU : RECRUTEMENT */}
+        {activeTab === 'recruitment' && (
+          <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden">
+            <div className="p-8 bg-blue-900 text-white">
+               <h3 className="text-[10px] font-black uppercase tracking-widest">Demandes d'adhésion en attente</h3>
+               <p className="text-[9px] font-bold uppercase text-blue-300 mt-1">Accepter un candidat est irréversible (Règle FNCT).</p>
+            </div>
+            <table className="w-full text-left">
+               <tbody className="divide-y divide-gray-50">
                   {requests.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-10 py-20 text-center">
-                        <p className="text-gray-300 font-black uppercase text-[10px] tracking-[0.3em]">Aucune nouvelle demande pour le moment</p>
-                      </td>
-                    </tr>
+                    <tr><td className="p-20 text-center text-[10px] font-black text-gray-300 uppercase">Aucun nouveau postulant.</td></tr>
                   ) : (
                     requests.map(req => (
-                      <tr key={req.id} className="hover:bg-blue-50/10 transition-colors group">
-                        <td className="px-10 py-6">
-                          <div className="flex items-center space-x-4">
-                            <button 
-                              onClick={() => fetchMemberProfile(req.student_id)}
-                              className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-black text-gray-400 text-xs uppercase hover:bg-blue-600 hover:text-white transition-colors"
-                            >
-                              {req.profiles?.first_name?.charAt(0) || '?'}
-                            </button>
-                            <div>
-                              <button onClick={() => fetchMemberProfile(req.student_id)} className="text-[11px] font-black text-blue-900 uppercase hover:underline">
-                                {req.profiles?.first_name} {req.profiles?.last_name}
-                              </button>
-                              <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">{req.profiles?.major}</p>
+                      <tr key={req.id} className="hover:bg-blue-50/10">
+                         <td className="p-8">
+                            <button onClick={() => fetchMemberProfile(req.student_id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline">{req.profiles?.first_name} {req.profiles?.last_name}</button>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase">{req.profiles?.university}</p>
+                         </td>
+                         <td className="p-8">
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                               {req.profiles?.metier_skills?.map((s: string) => <span key={s} className="px-2 py-0.5 bg-gray-50 border border-gray-100 text-[7px] font-black uppercase rounded">{s}</span>)}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-10 py-6">
-                          <p className="text-[10px] font-black text-gray-700 uppercase">{req.profiles?.university}</p>
-                          <p className="text-[9px] font-medium text-gray-400">{req.profiles?.level}</p>
-                        </td>
-                        <td className="px-10 py-6">
-                          <div className="flex flex-wrap gap-1 max-w-[200px]">
-                            {req.profiles?.metier_skills?.map((s: string) => (
-                              <span key={s} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[7px] font-black uppercase rounded border border-emerald-100">{s}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-10 py-6">
-                          <p className="text-[9px] text-gray-500 italic line-clamp-2 max-w-[250px]">
-                            {req.profiles?.other_skills || "Aucune information complémentaire"}
-                          </p>
-                        </td>
-                        <td className="px-10 py-6 text-right">
-                          <div className="flex justify-end space-x-2">
+                         </td>
+                         <td className="p-8 text-right">
                             <button 
-                              onClick={() => handleRejectRequest(req.id)}
-                              disabled={!!processingRequestId}
-                              className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
-                              title="Refuser"
+                               onClick={() => handleAcceptRequest(req)} 
+                               disabled={!!processingRequestId} 
+                               className="px-6 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-lg shadow hover:bg-emerald-700 transition-all"
                             >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                               APPROUVER
                             </button>
-                            <button 
-                              onClick={() => handleAcceptRequest(req)}
-                              disabled={!!processingRequestId}
-                              className="px-6 py-3 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-xl hover:bg-emerald-700 shadow-lg active:scale-95 transition-all disabled:opacity-30 flex items-center space-x-2"
-                            >
-                              {processingRequestId === req.id ? (
-                                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                              ) : (
-                                <span>APPROUVER</span>
-                              )}
-                            </button>
-                          </div>
-                        </td>
+                         </td>
                       </tr>
                     ))
                   )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {/* MODAL FICHE CANDIDAT */}
-        {(selectedMemberProfile || isProfileLoading) && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-blue-900/60 backdrop-blur-sm" onClick={() => setSelectedMemberProfile(null)}></div>
-            <div className="relative bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-              {isProfileLoading ? (
-                <div className="h-96 flex flex-col items-center justify-center space-y-4">
-                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-[10px] font-black uppercase text-blue-900 tracking-widest">Chargement de la fiche...</p>
-                </div>
-              ) : selectedMemberProfile && (
-                <>
-                  <div className="p-8 bg-blue-900 text-white flex justify-between items-start">
-                    <div className="flex items-center space-x-6">
-                      <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center text-4xl font-black uppercase border border-white/20">
-                        {selectedMemberProfile.first_name?.charAt(0)}
-                      </div>
-                      <div>
-                        <h4 className="text-2xl font-black uppercase tracking-tighter">{selectedMemberProfile.first_name} {selectedMemberProfile.last_name}</h4>
-                        <p className="text-[10px] font-bold uppercase text-blue-300 tracking-[0.2em] mt-1">{selectedMemberProfile.major}</p>
-                      </div>
-                    </div>
-                    <button onClick={() => setSelectedMemberProfile(null)} className="p-3 hover:bg-white/10 rounded-2xl transition-colors">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                  
-                  <div className="p-10 space-y-10 max-h-[70vh] overflow-y-auto no-scrollbar">
-                    <section className="grid grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Établissement</p>
-                        <p className="text-xs font-black text-blue-900 uppercase">{selectedMemberProfile.university}</p>
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Niveau</p>
-                        <p className="text-xs font-black text-blue-900 uppercase">{selectedMemberProfile.level}</p>
-                      </div>
-                    </section>
-
-                    <section className="space-y-4">
-                      <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Expertises Métier & Tech</h5>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMemberProfile.metier_skills?.map((s: string) => (
-                          <span key={s} className="px-3 py-1 bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase rounded-lg border border-emerald-100">{s}</span>
-                        ))}
-                        {selectedMemberProfile.tech_skills?.map((s: string) => (
-                          <span key={s} className="px-3 py-1 bg-blue-50 text-blue-700 text-[9px] font-black uppercase rounded-lg border border-blue-100">{s}</span>
-                        ))}
-                      </div>
-                    </section>
-
-                    <section className="space-y-4">
-                      <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Biographie / Atouts</h5>
-                      <p className="text-xs text-gray-500 font-medium leading-relaxed italic">
-                        "{selectedMemberProfile.other_skills || "Aucune description fournie."}"
-                      </p>
-                    </section>
-
-                    {selectedMemberProfile.cv_url && (
-                      <div className="pt-4">
-                        <a 
-                          href={selectedMemberProfile.cv_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="w-full py-5 bg-gray-50 border border-gray-100 text-blue-600 rounded-2xl flex items-center justify-center space-x-3 hover:bg-blue-50 transition-colors group"
-                        >
-                          <svg className="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em]">Consulter le CV (PDF)</span>
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="p-8 bg-gray-50 text-center border-t">
-                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Document confidentiel - Usage Hackathon FNCT uniquement</p>
-                  </div>
-                </>
-              )}
-            </div>
+               </tbody>
+            </table>
           </div>
         )}
 
-        {/* AI COACH FLOATING BUTTON */}
-        <div className="fixed bottom-10 right-10 z-[60]">
-          {!isAiOpen ? (
-            <button onClick={() => setIsAiOpen(true)} className="w-16 h-16 bg-blue-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-all border-4 border-white">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-            </button>
-          ) : (
-            <div className="w-[400px] h-[550px] bg-white rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border border-gray-100 animate-in slide-in-from-right-10 duration-500">
-               <div className="p-8 bg-blue-900 text-white flex justify-between items-center">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-300">Assistant Stratégique</p>
-                    <p className="text-sm font-black uppercase tracking-tighter">Coach IA Hackathon</p>
+        {/* CONTENU : COMMUNICATION (Règle 5) */}
+        {activeTab === 'communication' && isLeader && (
+          <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden animate-in fade-in">
+             <div className="p-8 bg-gray-50 border-b">
+                <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Canal de Communication Interne</h3>
+                <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Coordonnées directes de vos collaborateurs.</p>
+             </div>
+             <div className="divide-y divide-gray-100">
+                {team.members.map((m, idx) => (
+                  <div key={idx} className="p-8 flex items-center justify-between hover:bg-blue-50/20 transition-colors">
+                     <div className="flex items-center space-x-6">
+                        <div className="w-12 h-12 bg-white border border-gray-100 rounded-xl flex items-center justify-center font-black text-blue-900">{idx+1}</div>
+                        <div>
+                           <p className="text-[11px] font-black text-blue-900 uppercase">{m.name}</p>
+                           <p className="text-[9px] font-bold text-gray-400 uppercase mt-1 tracking-widest">Rôle : {m.role === 'leader' ? 'Chef de Projet' : 'Expert'}</p>
+                        </div>
+                     </div>
+                     <div className="flex items-center space-x-12">
+                        <div>
+                           <p className="text-[8px] font-black text-gray-300 uppercase mb-1">Email Officiel</p>
+                           <p className="text-[10px] font-black text-blue-600 lowercase border-b border-blue-100 pb-0.5">Contact@fnct-univ.tn</p>
+                        </div>
+                        <div>
+                           <p className="text-[8px] font-black text-gray-300 uppercase mb-1">Contact Mobile</p>
+                           <p className="text-[10px] font-black text-blue-900">+216 -- --- ---</p>
+                        </div>
+                        <button className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        </button>
+                     </div>
                   </div>
-                  <button onClick={() => setIsAiOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-               </div>
-               <div className="flex-grow overflow-y-auto p-8 space-y-6 bg-gray-50/50 no-scrollbar">
-                  {aiHistory.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] p-5 rounded-2xl text-[10px] font-medium leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 border border-gray-100'}`}>
-                        {m.text}
+                ))}
+             </div>
+          </div>
+        )}
+
+        {/* CONTENU : COACH IA */}
+        {activeTab === 'ai' && (
+          <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm flex flex-col h-[600px] animate-in zoom-in-95">
+             <div className="p-8 bg-blue-900 text-white flex items-center space-x-4">
+                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                </div>
+                <div>
+                   <h3 className="text-xs font-black uppercase tracking-widest">Assistant Stratégique FNCT</h3>
+                   <p className="text-[9px] font-bold text-blue-300 uppercase">Coach de projet en temps réel</p>
+                </div>
+             </div>
+             <div className="flex-grow p-10 overflow-y-auto space-y-6 bg-gray-50/50">
+                {aiHistory.length === 0 && (
+                   <div className="text-center py-20">
+                      <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Comment puis-je aider votre équipe aujourd'hui ?</p>
+                   </div>
+                )}
+                {aiHistory.map((m, i) => (
+                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] p-6 rounded-2xl text-[10px] font-medium leading-relaxed ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 border border-gray-100 shadow-sm'}`}>
+                         {m.text}
                       </div>
-                    </div>
-                  ))}
-                  {isAiLoading && <div className="flex justify-start"><div className="bg-gray-200 w-12 h-6 rounded-full animate-pulse"></div></div>}
-               </div>
-               <form onSubmit={askAi} className="p-6 bg-white border-t flex items-center space-x-3">
-                  <input type="text" value={aiMessage} onChange={(e) => setAiMessage(e.target.value)} placeholder="Comment optimiser notre POC ?" className="flex-grow p-4 bg-gray-100 rounded-2xl text-[10px] outline-none font-bold" />
-                  <button type="submit" className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg hover:bg-blue-700 transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                  </button>
-               </form>
-            </div>
-          )}
-        </div>
+                   </div>
+                ))}
+                {isAiLoading && <div className="flex justify-start"><div className="w-12 h-6 bg-gray-200 rounded-full animate-pulse"></div></div>}
+             </div>
+             <form onSubmit={askAi} className="p-6 border-t bg-white flex items-center space-x-3">
+                <input type="text" value={aiMessage} onChange={(e) => setAiMessage(e.target.value)} placeholder="Posez une question sur votre innovation..." className="flex-grow p-4 bg-gray-50 border-none rounded-xl text-[10px] outline-none font-bold" />
+                <button type="submit" className="p-4 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700 transition-all">
+                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                </button>
+             </form>
+          </div>
+        )}
+
+        {/* MODAL FICHE CANDIDAT (DÉTAILS) */}
+        {selectedMemberProfile && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+             <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-sm" onClick={() => setSelectedMemberProfile(null)}></div>
+             <div className="relative bg-white w-full max-w-lg rounded-[8px] shadow-2xl overflow-hidden animate-in zoom-in-95">
+                <div className="p-10 bg-blue-900 text-white flex items-center space-x-6">
+                   <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-2xl font-black uppercase border border-white/20">
+                      {selectedMemberProfile.first_name?.charAt(0)}
+                   </div>
+                   <div>
+                      <h4 className="text-xl font-black uppercase tracking-tight leading-none">{selectedMemberProfile.first_name} {selectedMemberProfile.last_name}</h4>
+                      <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest mt-2">{selectedMemberProfile.university}</p>
+                   </div>
+                </div>
+                <div className="p-10 space-y-6">
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Expertises Déclarées</p>
+                      <div className="flex flex-wrap gap-1">
+                         {selectedMemberProfile.metier_skills?.map((s: string) => <span key={s} className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[8px] font-black uppercase rounded border border-emerald-100">{s}</span>)}
+                      </div>
+                   </section>
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Biographie / Atouts</p>
+                      <p className="text-xs text-gray-500 italic">"{selectedMemberProfile.other_skills || 'Aucune description fournie.'}"</p>
+                   </section>
+                   {selectedMemberProfile.cv_url && (
+                     <a href={selectedMemberProfile.cv_url} target="_blank" className="w-full py-4 bg-gray-50 text-blue-600 rounded-xl border border-gray-100 flex items-center justify-center space-x-2 text-[9px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all">
+                        <span>Voir le CV complet (PDF)</span>
+                     </a>
+                   )}
+                </div>
+             </div>
+          </div>
+        )}
+
       </main>
     </Layout>
   );

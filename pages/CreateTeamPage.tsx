@@ -19,20 +19,26 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
     description: '',
     region: REGIONS[0].name,
     theme: THEMES[0],
-    secondaryTheme: THEMES[1] // Valeur par défaut pour respecter la contrainte NOT NULL
+    secondaryTheme: THEMES[1]
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isInTeam = !!userProfile?.currentTeamId;
+  const hasPendingApplications = (userProfile?.applications?.length || 0) > 0;
 
   useEffect(() => {
-    if (isInTeam) {
+    if (isInTeam || hasPendingApplications) {
       onNavigate('dashboard');
     }
-  }, [isInTeam]);
+  }, [isInTeam, hasPendingApplications]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (hasPendingApplications) {
+      alert("Vous avez des candidatures en cours. Annulez-les ou attendez un refus avant de créer votre propre équipe.");
+      return;
+    }
+    
     if (!formData.name || !formData.description) return alert("Veuillez remplir les champs obligatoires.");
     
     setIsSubmitting(true);
@@ -40,8 +46,6 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Session expirée.");
 
-      // Insertion atomique dans public.teams
-      // On respecte scrupuleusement le schéma public.teams fourni
       const { data: team, error: teamError } = await supabase
         .from('teams')
         .insert({
@@ -49,7 +53,7 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
           description: formData.description,
           leader_id: user.id,
           theme: formData.theme,
-          secondary_theme: formData.secondaryTheme, // CHAMP NOT NULL
+          secondary_theme: formData.secondaryTheme,
           preferred_region: formData.region,
           status: 'incomplete'
         })
@@ -57,7 +61,6 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
 
       if (teamError) throw teamError;
 
-      // Insertion automatique du leader dans team_members
       const { error: memberError } = await supabase
         .from('team_members')
         .insert({ 
@@ -67,7 +70,6 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
         });
 
       if (memberError) {
-        // Rollback manuel simple pour le prototype
         await supabase.from('teams').delete().eq('id', team.id);
         throw memberError;
       }
@@ -83,13 +85,18 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
     }
   };
 
-  if (isInTeam) return null;
+  if (isInTeam || hasPendingApplications) return null;
 
   return (
     <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
       <DashboardHeader title="Nouveau Projet Municipal" subtitle="Lancez votre innovation pour les 50 ans de la FNCT." />
       <main className="max-w-4xl mx-auto px-4 py-10">
-        <form onSubmit={handleCreate} className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
+        <div className="mb-8 p-6 bg-blue-50 border-l-4 border-blue-600 rounded-r-2xl">
+           <p className="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Règle FNCT 2026</p>
+           <p className="text-[11px] text-blue-700/70 font-medium">En tant que Chef de Projet, vous ne pouvez créer qu'une seule équipe nationale. Le nom et les thèmes seront définitifs dès la création.</p>
+        </div>
+
+        <form onSubmit={handleCreate} className="bg-white rounded-[8px] shadow-lg overflow-hidden border border-[#E0E0E0] animate-in fade-in slide-in-from-bottom-4">
           <div className="p-12 space-y-10">
             <section className="space-y-6">
               <h3 className="text-sm font-black text-blue-900 uppercase tracking-widest border-b pb-4">Identité du Projet</h3>
