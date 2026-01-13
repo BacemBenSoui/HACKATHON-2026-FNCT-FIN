@@ -86,6 +86,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onLogout
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Session</p>
                     <p className="text-xs font-black text-blue-900 uppercase tracking-tight">{userType === 'admin' ? 'Pilotage' : 'Candidat'}</p>
                   </div>
+                  {/* Utilisation de onLogout (qui fait une navigation simple vers landing en vidant les états) pour résoudre le point 6 */}
                   <button 
                     onClick={onLogout}
                     className="flex items-center space-x-2 px-4 py-2 text-gray-400 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-100 group"

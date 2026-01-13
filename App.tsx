@@ -25,7 +25,6 @@ const App: React.FC = () => {
       if (session) {
         await fetchUserData(session.user.id);
       } else {
-        // Reset complet lors de la perte de session
         setUserProfile(null);
         setUserRole(null);
         setUserTeam(null);
@@ -86,7 +85,7 @@ const App: React.FC = () => {
           
           const { data: allMembers } = await supabase
              .from('team_members')
-             .select('profile_id, profiles(first_name, last_name, tech_skills, metier_skills, gender), role')
+             .select('profile_id, profiles(first_name, last_name, email, phone, tech_skills, metier_skills, gender), role')
              .eq('team_id', membership.team_id);
 
           setUserTeam({
@@ -102,11 +101,14 @@ const App: React.FC = () => {
             videoUrl: teamData.video_url,
             pocUrl: teamData.poc_url,
             motivationUrl: teamData.motivation_url,
+            lettreMotivationUrl: teamData.lettre_motivation_url,
             joinRequests: [],
             requestedSkills: teamData.requested_skills || [],
             members: allMembers?.map((m: any) => ({
               id: m.profile_id,
               name: m.profiles ? `${m.profiles.first_name} ${m.profiles.last_name}` : 'Utilisateur',
+              email: m.profiles?.email || '',
+              phone: m.profiles?.phone || '',
               techSkills: m.profiles?.tech_skills || [],
               metierSkills: m.profiles?.metier_skills || [],
               gender: m.profiles?.gender || 'O',
@@ -137,22 +139,15 @@ const App: React.FC = () => {
     setCurrentPage(page);
   };
 
-  const handleLogout = async () => {
-    if (!confirm("Voulez-vous vraiment vous déconnecter ?")) return;
-    
-    setIsLoading(true);
-    try {
-      await supabase.auth.signOut();
-      // Le state est nettoyé par onAuthStateChange, mais on force ici par sécurité
+  const handleLogout = () => {
+    // Règle 6 : Désactivation du script complexe, navigation simple vers l'accueil
+    // Supabase gère la session, mais ici on force le nettoyage local des états
+    if (confirm("Voulez-vous quitter la plateforme ?")) {
+      supabase.auth.signOut().catch(() => {});
       setUserProfile(null);
       setUserRole(null);
       setUserTeam(null);
       navigate('landing');
-    } catch (e) {
-      console.error("Logout error:", e);
-      alert("Erreur lors de la déconnexion.");
-    } finally {
-      setIsLoading(false);
     }
   };
 

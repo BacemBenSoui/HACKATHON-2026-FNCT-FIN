@@ -99,6 +99,74 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
     fetchAdminData();
   };
 
+  // Nouvelle fonctionnalité d'exportation Excel/CSV
+  const handleExportCSV = () => {
+    const headers = [
+      "ID Candidat", "Prénom", "Nom", "Email", "Téléphone", "Université", "Niveau", "Genre",
+      "Compétences Techniques", "Compétences Métier",
+      "Nom Équipe", "ID Équipe", "Région", "Thème", "Statut Dossier", "Rôle dans l'équipe"
+    ];
+
+    const rows = profiles.map(profile => {
+      // Trouver l'équipe du candidat
+      const associatedTeam = teams.find(t => 
+        t.members.some((m: any) => m.profile_id === profile.id)
+      );
+
+      let teamInfo = {
+        name: "Sans équipe",
+        id: "",
+        region: "",
+        theme: "",
+        status: "",
+        role: "Aucun"
+      };
+
+      if (associatedTeam) {
+        const memberRecord = associatedTeam.members.find((m: any) => m.profile_id === profile.id);
+        teamInfo = {
+          name: associatedTeam.name || "N/A",
+          id: associatedTeam.id || "",
+          region: associatedTeam.preferred_region || "",
+          theme: associatedTeam.theme || "",
+          status: STATUS_LABELS[associatedTeam.status] || associatedTeam.status,
+          role: memberRecord?.role === 'leader' ? "Chef de Projet" : "Membre Expert"
+        };
+      }
+
+      // Nettoyage des données pour le CSV (échappement des guillemets)
+      const clean = (text: string) => `"${(text || '').toString().replace(/"/g, '""')}"`;
+
+      return [
+        clean(profile.id),
+        clean(profile.first_name),
+        clean(profile.last_name),
+        clean(profile.email),
+        clean(profile.phone),
+        clean(profile.university),
+        clean(profile.level),
+        clean(profile.gender),
+        clean((profile.tech_skills || []).join(', ')),
+        clean((profile.metier_skills || []).join(', ')),
+        clean(teamInfo.name),
+        clean(teamInfo.id),
+        clean(teamInfo.region),
+        clean(teamInfo.theme),
+        clean(teamInfo.status),
+        clean(teamInfo.role)
+      ].join(',');
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `FNCT2026_Export_Global_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (isLoading) return (
     <div className="min-h-screen bg-white flex items-center justify-center">
        <div className="text-center animate-pulse">
@@ -113,6 +181,16 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
       <DashboardHeader 
         title="Centre de Pilotage FNCT 2026" 
         subtitle="Saison Innovation Territoriale - 50 ans de la Fédération."
+        actions={
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center space-x-2 px-5 py-3 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95"
+            title="Télécharger la base de données complète"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Export Excel (.csv)</span>
+          </button>
+        }
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">

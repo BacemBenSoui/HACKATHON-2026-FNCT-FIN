@@ -26,6 +26,8 @@ export interface StudentProfile {
 export interface TeamMemberSummary {
   id: string;
   name: string;
+  email: string; // Ajouté pour l'onglet communication
+  phone?: string; // Ajouté pour l'onglet communication
   techSkills: string[];
   metierSkills: string[];
   gender: 'M' | 'F' | 'O';
@@ -43,14 +45,14 @@ export interface Team {
   preferredRegion: string;
   status: 'incomplete' | 'complete' | 'submitted' | 'selected' | 'waitlist' | 'rejected';
   theme: string;
-  secondaryTheme: string; // NOT NULL dans le schéma public.teams
+  secondaryTheme: string;
   secondaryThemeDescription?: string;
   videoUrl?: string;
   pocUrl?: string;
   motivationUrl?: string;
+  lettreMotivationUrl?: string; // Ajouté pour la règle de gestion 5
 }
 
-// Added JoinRequest interface to fix the error in Dashboard.tsx
 export interface JoinRequest {
   id: string;
   teamId: string;

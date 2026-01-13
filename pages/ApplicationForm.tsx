@@ -21,6 +21,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
   
   const [formData, setFormData] = useState({
     motivationUrl: team?.motivationUrl || '',
+    lettreMotivationUrl: team?.lettreMotivationUrl || '', 
     videoUrl: team?.videoUrl || '',
     pocUrl: team?.pocUrl || '',
     description: team?.description || '',
@@ -32,6 +33,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
     if (team) {
       setFormData({
         motivationUrl: team.motivationUrl || '',
+        lettreMotivationUrl: team.lettreMotivationUrl || '',
         videoUrl: team.videoUrl || '',
         pocUrl: team.pocUrl || '',
         description: team.description || '',
@@ -61,6 +63,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
     const hasMixity = femaleCount >= 2;
     
     const hasMotivation = isValidUrl(formData.motivationUrl);
+    const hasLettre = isValidUrl(formData.lettreMotivationUrl);
     const hasVideo = isValidUrl(formData.videoUrl);
     const hasDescription = formData.description && formData.description.trim().length >= 20;
     
@@ -68,42 +71,39 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
       hasFiveMembers,
       hasMixity,
       hasMotivation,
+      hasLettre,
       hasVideo,
       hasDescription,
-      ok: hasFiveMembers && hasMixity && hasMotivation && hasVideo && hasDescription
+      ok: hasFiveMembers && hasMixity && hasMotivation && hasLettre && hasVideo && hasDescription
     };
   }, [team, formData]);
 
-  // FONCTION DE DÉPÔT : Met à jour les données et change le statut en 'submitted'
   const handleDeposit = async () => {
     if (!team?.id || isLocked) return;
     
-    // Vérification de sécurité pour le prototype
-    if (!validation.ok && !confirm("Le dossier est incomplet (mixité, effectif ou URLs). Voulez-vous tout de même procéder au dépôt officiel ?")) {
+    if (!validation.ok && !confirm("Le dossier est incomplet. Voulez-vous tout de même procéder au dépôt officiel ?")) {
       return;
     }
 
     setIsSubmitting(true);
     const targetId = String(team.id).trim();
 
-    // Payload de mise à jour (Snake Case pour Supabase)
-    // Note: 'submitted' doit correspondre exactement à une valeur de l'ENUM team_status
     const updatePayload: any = {
       video_url: formData.videoUrl || null,
       poc_url: formData.pocUrl || null,
       motivation_url: formData.motivationUrl || null,
+      lettre_motivation_url: formData.lettreMotivationUrl || null,
       description: formData.description || null,
       secondary_theme: formData.secondaryTheme || null,
       secondary_theme_description: formData.secondaryThemeDescription || null,
-      status: 'submitted' // Valeur ENUM
+      status: 'submitted'
     };
 
     try {
       const { error } = await supabase
         .from('teams')
         .update(updatePayload)
-        .eq('id', targetId)
-        .select();
+        .eq('id', targetId);
 
       if (error) throw error;
       
@@ -111,7 +111,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
       setShowSuccessModal(true);
     } catch (err: any) {
       console.error("Erreur de mise à jour status:", err);
-      alert("Erreur base de données : " + (err.message || "Impossible de mettre à jour le statut."));
+      alert("Erreur base de données lors du dépôt.");
     } finally {
       setIsSubmitting(false);
     }
@@ -132,11 +132,6 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
             <style>
               body { background: white; font-family: 'Inter', sans-serif; }
               #printable-attestation { padding: 40px !important; width: 100% !important; }
-              @media print {
-                @page { size: A4; margin: 0; }
-                body { padding: 0; }
-              }
-              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             </style>
           </head>
           <body>
@@ -182,7 +177,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                     rows={4}
                     value={formData.description}
                     onChange={(e) => setFormData(p => ({...p, description: e.target.value}))}
-                    className="w-full p-6 bg-slate-900 text-white rounded-[2rem] outline-none focus:ring-4 focus:ring-blue-500/20 text-sm"
+                    className="w-full p-6 bg-slate-900 text-white rounded-[2rem] outline-none focus:ring-4 focus:ring-blue-500/20 text-sm font-medium"
                     placeholder="Comment transformez-vous votre commune ?"
                   />
                   
@@ -217,14 +212,26 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                 <h3 className="text-sm font-black text-blue-900 uppercase tracking-widest border-b pb-4">2. Ressources Numériques (URLs)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Dossier de Motivation (PDF) *</label>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Mémoire de Motivation (PDF) *</label>
                     <input 
                       disabled={isLocked} 
                       type="url" 
                       value={formData.motivationUrl} 
                       onChange={(e) => setFormData(p => ({...p, motivationUrl: e.target.value}))} 
-                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 ${isValidUrl(formData.motivationUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
+                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 transition-all ${isValidUrl(formData.motivationUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
                       placeholder="Lien PDF public..."
+                    />
+                  </div>
+                  {/* Règle 5 : Ajout Lettre de Motivation */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">URL Lettre de Motivation *</label>
+                    <input 
+                      disabled={isLocked} 
+                      type="url" 
+                      value={formData.lettreMotivationUrl} 
+                      onChange={(e) => setFormData(p => ({...p, lettreMotivationUrl: e.target.value}))} 
+                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 transition-all ${isValidUrl(formData.lettreMotivationUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
+                      placeholder="Lien vers la lettre de motivation..."
                     />
                   </div>
                   <div className="space-y-2">
@@ -234,8 +241,19 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                       type="url" 
                       value={formData.videoUrl} 
                       onChange={(e) => setFormData(p => ({...p, videoUrl: e.target.value}))} 
-                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 ${isValidUrl(formData.videoUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
+                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 transition-all ${isValidUrl(formData.videoUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
                       placeholder="Lien vers la vidéo..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">URL Prototype / POC (Optionnel)</label>
+                    <input 
+                      disabled={isLocked} 
+                      type="url" 
+                      value={formData.pocUrl} 
+                      onChange={(e) => setFormData(p => ({...p, pocUrl: e.target.value}))} 
+                      className={`w-full p-5 bg-slate-900 text-white rounded-2xl text-xs outline-none border-2 transition-all ${isValidUrl(formData.pocUrl) ? 'border-emerald-500/50' : 'border-transparent'}`} 
+                      placeholder="Lien Github, Figma..."
                     />
                   </div>
                 </div>
@@ -245,7 +263,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                 <button 
                   onClick={handleDeposit}
                   disabled={isLocked || isSubmitting}
-                  className={`w-full py-7 rounded-3xl font-black text-[12px] uppercase tracking-[0.3em] transition-all flex items-center justify-center space-x-4 shadow-2xl ${isLocked ? 'bg-gray-100 text-gray-400' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}
+                  className={`w-full py-7 rounded-3xl font-black text-[12px] uppercase tracking-[0.3em] transition-all flex items-center justify-center space-x-4 shadow-2xl ${isLocked ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}
                 >
                   {isSubmitting ? (
                     <span className="w-5 h-5 border-4 border-white/20 border-t-white rounded-full animate-spin"></span>
@@ -279,7 +297,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                 </div>
                 <div className="flex justify-between items-center">
                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Livrables Vidéo/PDF</span>
-                   <span className={`text-[10px] font-black ${validation.hasMotivation && validation.hasVideo ? 'text-emerald-600' : 'text-orange-500'}`}>{validation.hasMotivation && validation.hasVideo ? 'OK' : 'MANQUANT'}</span>
+                   <span className={`text-[10px] font-black ${validation.hasMotivation && validation.hasVideo && validation.hasLettre ? 'text-emerald-600' : 'text-orange-500'}`}>{validation.hasMotivation && validation.hasVideo && validation.hasLettre ? 'OK' : 'MANQUANT'}</span>
                 </div>
              </div>
 
@@ -294,14 +312,14 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
         </div>
       </main>
 
-      {/* MODAL CERTIFICAT NOMINATIF */}
+      {/* Reste du composant identique (Modals) ... */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/90 backdrop-blur-md no-print">
            <div className="bg-white w-full max-w-5xl rounded-[3.5rem] shadow-2xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
               <div className="p-8 border-b bg-gray-50 flex justify-between items-center shrink-0">
                  <h2 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Certificat de Dépôt Officiel</h2>
                  <div className="flex space-x-4">
-                    <button onClick={handlePrintToNewTab} className="px-8 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-700 transition-all">Export PDF (Nvel Onglet)</button>
+                    <button onClick={handlePrintToNewTab} className="px-8 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-700 transition-all">Export PDF</button>
                     <button onClick={() => setIsPreviewOpen(false)} className="px-8 py-4 bg-gray-200 text-gray-600 rounded-2xl text-[10px] font-black uppercase">Fermer</button>
                  </div>
               </div>
@@ -373,7 +391,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
                     <div className="max-w-md">
                        <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">Certification Numérique</p>
                        <p className="text-[10px] text-gray-400 font-medium leading-relaxed italic">
-                         Ce document atteste de la réception complète du dossier technique (Pitch, Motivation) sur l'infrastructure sécurisée FNCT 2026. La signature numérique SHA-{team.id.substring(24).toUpperCase()} garantit l'intégrité des données transmises.
+                         Ce document atteste de la réception complète du dossier technique sur l'infrastructure sécurisée FNCT 2026.
                        </p>
                     </div>
                     <div className="text-right">
@@ -386,16 +404,15 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
         </div>
       )}
 
-      {/* MODAL SUCCÈS RÉSEAU */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-blue-900/95 backdrop-blur-2xl">
-           <div className="bg-white p-16 rounded-[4rem] max-w-lg text-center shadow-2xl animate-in zoom-in-95 duration-500 border border-white/20">
+           <div className="bg-white p-16 rounded-[4rem] max-w-lg text-center shadow-2xl animate-in zoom-in-95 duration-500">
               <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-xl">
                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
               </div>
               <h2 className="text-4xl font-black text-blue-900 uppercase tracking-tighter mb-4">Dépôt Réussi</h2>
               <p className="text-xs text-gray-500 font-medium leading-relaxed mb-10 italic">
-                Votre dossier FNCT 2026 est officiellement enregistré. Le statut de votre équipe est désormais verrouillé sur 'Soumis'. Bonne chance pour l'évaluation !
+                Votre dossier FNCT 2026 est officiellement enregistré.
               </p>
               <button 
                 onClick={() => onNavigate('dashboard')} 

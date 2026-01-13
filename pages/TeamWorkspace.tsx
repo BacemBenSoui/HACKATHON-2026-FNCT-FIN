@@ -29,12 +29,21 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<any | null>(null);
   
-  // States pour l'édition leader
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     description: team?.description || '',
     requested_skills: team?.requestedSkills || []
   });
+
+  // Mise à jour de editData quand le team change
+  useEffect(() => {
+    if (team && !isEditing) {
+      setEditData({
+        description: team.description || '',
+        requested_skills: team.requestedSkills || []
+      });
+    }
+  }, [team, isEditing]);
 
   const isLeader = userProfile?.teamRole === 'leader';
   const membersCount = team?.members.length || 0;
@@ -63,21 +72,34 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   }, [team?.id, isLeader]);
 
   const fetchJoinRequests = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('join_requests')
-      .select('*, profiles(first_name, last_name, university, level, major, metier_skills, other_skills, gender)')
+      .select('*, profiles(*)')
       .eq('team_id', team!.id)
       .eq('status', 'pending');
+    
+    if (error) console.error("Error requests:", error);
     setRequests(data || []);
   };
 
   const fetchMemberProfile = async (profileId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', profileId).single();
-    setSelectedMemberProfile(data);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', profileId)
+        .single();
+      if (error) throw error;
+      setSelectedMemberProfile(data);
+    } catch (err) {
+      console.error("Profile error:", err);
+      alert("Erreur lors de la récupération du profil.");
+    }
   };
 
+  // Règle 1 : "sauvegarder les modification" ne fonctionnait pas
   const handleUpdateTeamInfo = async () => {
-    if (!team || !isLeader || isSubmitted) return;
+    if (!team?.id || !isLeader || isSubmitted) return;
     try {
       const { error } = await supabase
         .from('teams')
@@ -92,56 +114,64 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
       setIsEditing(false);
       alert("Informations mises à jour.");
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      console.error("Save error:", err);
+      alert("Erreur lors de la sauvegarde.");
     }
   };
 
+  // Règle 2 : le bouton "approuver" ne fonctionne pas
   const handleAcceptRequest = async (request: any) => {
     if (!team) return;
     setProcessingRequestId(request.id);
 
     try {
-      // 1. Vérification si le candidat est déjà dans une autre équipe (Règle 1)
-      const { data: existingMembership } = await supabase
+      // 1. Verrouillage (Règle 1 du prompt précédent)
+      const { data: alreadyJoined } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('profile_id', request.student_id)
         .maybeSingle();
 
-      if (existingMembership) {
-        alert("Action Impossible : Ce candidat a déjà accepté une place dans une autre équipe.");
+      if (alreadyJoined) {
+        alert("Action Impossible : Ce candidat a déjà intégré une autre équipe.");
         await supabase.from('join_requests').update({ status: 'rejected' }).eq('id', request.id);
         await fetchJoinRequests();
         return;
       }
 
-      // 2. Vérification quota équipe
-      const { count } = await supabase
+      // 2. Insert member
+      const { error: insError } = await supabase
         .from('team_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', team.id);
-
-      if (count !== null && count >= 5) {
-        alert("L'équipe est déjà complète.");
-        return;
-      }
-
-      // 3. Intégration irréversible
-      const { error: memberError } = await supabase.from('team_members').insert({
-        team_id: team.id,
-        profile_id: request.student_id,
-        role: 'member'
-      });
-      if (memberError) throw memberError;
-
-      await supabase.from('join_requests').update({ status: 'accepted' }).eq('id', request.id);
+        .insert({
+          team_id: team.id,
+          profile_id: request.student_id,
+          role: 'member'
+        });
       
+      if (insError) throw insError;
+
+      // 3. Update request status
+      const { error: updError } = await supabase
+        .from('join_requests')
+        .update({ status: 'accepted' })
+        .eq('id', request.id);
+      
+      if (updError) throw updError;
+
+      // 4. Invalider les autres candidatures (Règle 1 du prompt précédent)
+      await supabase
+        .from('join_requests')
+        .update({ status: 'rejected' })
+        .eq('student_id', request.student_id)
+        .neq('team_id', team.id);
+
       if (refreshData) await refreshData();
       await fetchJoinRequests();
-      alert(`✅ ${request.profiles.first_name} a rejoint l'équipe.`);
+      alert(`Félicitations ! ${request.profiles?.first_name || 'Le candidat'} a rejoint l'équipe.`);
       
     } catch (err: any) {
-      alert("Erreur critique : " + err.message);
+      console.error("Approve error:", err);
+      alert("Erreur technique lors de l'approbation.");
     } finally {
       setProcessingRequestId(null);
     }
@@ -183,18 +213,16 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
         
-        {/* Navigation Onglets */}
-        <div className="flex space-x-2 bg-gray-100 p-2 rounded-[2rem] w-fit">
-          <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Équipe & Projet</button>
-          {isLeader && !isFull && <button onClick={() => setActiveTab('recruitment')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'recruitment' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Recrutement ({requests.length})</button>}
-          {isLeader && <button onClick={() => setActiveTab('communication')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'communication' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Communication</button>}
-          <button onClick={() => setActiveTab('ai')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'ai' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Coach IA</button>
+        {/* Navigation Onglets - Règle 4 : Couleur ruban en Jaune #fbbf24 */}
+        <div className="flex space-x-2 bg-[#fbbf24] p-2 rounded-[2rem] w-fit shadow-md">
+          <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Équipe & Projet</button>
+          {isLeader && !isFull && <button onClick={() => setActiveTab('recruitment')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'recruitment' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Recrutement ({requests.length})</button>}
+          {isLeader && <button onClick={() => setActiveTab('communication')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'communication' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Communication</button>}
+          <button onClick={() => setActiveTab('ai')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'ai' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Coach IA</button>
         </div>
 
-        {/* CONTENU : VUE D'ENSEMBLE & ÉDITION */}
         {activeTab === 'overview' && (
           <div className="space-y-10">
-            {/* Conformité */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                <div className={`p-8 rounded-[8px] border border-[#E0E0E0] shadow-sm ${compliance?.fiveMembers ? 'bg-emerald-50' : 'bg-white'}`}>
                   <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">Effectif (5)</p>
@@ -217,27 +245,26 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                </div>
             </div>
 
-            {/* Fiche Projet Leader (Édition) */}
             {isLeader && isEditing ? (
               <section className="bg-white p-10 rounded-[8px] border border-[#E0E0E0] shadow-sm animate-in fade-in">
                  <h3 className="text-[11px] font-black text-blue-900 uppercase tracking-widest border-b pb-4 mb-8">Édition du Projet (Restreinte)</h3>
                  <div className="space-y-6">
                     <div>
                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Description / Pitch Impact</label>
-                       <textarea value={editData.description} onChange={(e) => setEditData({...editData, description: e.target.value})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600" rows={4} />
+                       <textarea value={editData.description} onChange={(e) => setEditData({...editData, description: e.target.value})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium" rows={4} />
                     </div>
                     <div>
                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-4">Profils recherchés (Compétences Tech/Métier)</label>
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           {TECH_SKILLS.map(skill => (
-                            <button key={skill} onClick={() => setEditData({...editData, requested_skills: editData.requested_skills.includes(skill) ? editData.requested_skills.filter(s => s !== skill) : [...editData.requested_skills, skill]})} className={`p-2 rounded-lg text-[8px] font-black uppercase border transition-all ${editData.requested_skills.includes(skill) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
+                            <button key={skill} onClick={() => setEditData({...editData, requested_skills: editData.requested_skills.includes(skill) ? editData.requested_skills.filter(s => s !== skill) : [...editData.requested_skills, skill]})} className={`p-2 rounded-lg text-[8px] font-black uppercase border transition-all ${editData.requested_skills.includes(skill) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-blue-200'}`}>
                                {skill}
                             </button>
                           ))}
                        </div>
                     </div>
                     <div className="pt-6 flex justify-end">
-                       <button onClick={handleUpdateTeamInfo} className="px-10 py-4 bg-blue-900 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-blue-800 transition-all">Sauvegarder les modifications</button>
+                       <button onClick={handleUpdateTeamInfo} className="px-10 py-4 bg-blue-900 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-blue-800 transition-all active:scale-95">Sauvegarder les modifications</button>
                     </div>
                  </div>
               </section>
@@ -252,6 +279,7 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl mb-4 ${m.role === 'leader' ? 'bg-blue-900 text-white' : 'bg-blue-100 text-blue-600'}`}>
                            {m.name.charAt(0)}
                         </div>
+                        {/* Règle 2 : Lien vers fiche candidat */}
                         <button onClick={() => fetchMemberProfile(m.id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline">{m.name}</button>
                         <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">{m.role === 'leader' ? 'Chef de Projet' : 'Expert'}</p>
                      </div>
@@ -262,7 +290,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
 
-        {/* CONTENU : RECRUTEMENT */}
         {activeTab === 'recruitment' && (
           <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden">
             <div className="p-8 bg-blue-900 text-white">
@@ -275,23 +302,26 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                     <tr><td className="p-20 text-center text-[10px] font-black text-gray-300 uppercase">Aucun nouveau postulant.</td></tr>
                   ) : (
                     requests.map(req => (
-                      <tr key={req.id} className="hover:bg-blue-50/10">
+                      <tr key={req.id} className="hover:bg-blue-50/10 transition-colors">
                          <td className="p-8">
-                            <button onClick={() => fetchMemberProfile(req.student_id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline">{req.profiles?.first_name} {req.profiles?.last_name}</button>
+                            {/* Règle 2 : Lien fiche candidat */}
+                            <button onClick={() => fetchMemberProfile(req.student_id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline text-left">
+                               {req.profiles?.first_name} {req.profiles?.last_name}
+                            </button>
                             <p className="text-[8px] font-bold text-gray-400 uppercase">{req.profiles?.university}</p>
                          </td>
                          <td className="p-8">
                             <div className="flex flex-wrap gap-1 max-w-xs">
-                               {req.profiles?.metier_skills?.map((s: string) => <span key={s} className="px-2 py-0.5 bg-gray-50 border border-gray-100 text-[7px] font-black uppercase rounded">{s}</span>)}
+                               {req.profiles?.metier_skills?.slice(0, 3).map((s: string) => <span key={s} className="px-2 py-0.5 bg-gray-50 border border-gray-100 text-[7px] font-black uppercase rounded">{s}</span>)}
                             </div>
                          </td>
                          <td className="p-8 text-right">
                             <button 
                                onClick={() => handleAcceptRequest(req)} 
                                disabled={!!processingRequestId} 
-                               className="px-6 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-lg shadow hover:bg-emerald-700 transition-all"
+                               className="px-6 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase rounded-lg shadow hover:bg-emerald-700 transition-all active:scale-95 disabled:opacity-50"
                             >
-                               APPROUVER
+                               {processingRequestId === req.id ? '...' : 'APPROUVER'}
                             </button>
                          </td>
                       </tr>
@@ -322,15 +352,16 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                      <div className="flex items-center space-x-12">
                         <div>
                            <p className="text-[8px] font-black text-gray-300 uppercase mb-1">Email Officiel</p>
-                           <p className="text-[10px] font-black text-blue-600 lowercase border-b border-blue-100 pb-0.5">Contact@fnct-univ.tn</p>
+                           <p className="text-[10px] font-black text-blue-600 lowercase border-b border-blue-100 pb-0.5">{m.email}</p>
                         </div>
                         <div>
                            <p className="text-[8px] font-black text-gray-300 uppercase mb-1">Contact Mobile</p>
-                           <p className="text-[10px] font-black text-blue-900">+216 -- --- ---</p>
+                           <p className="text-[10px] font-black text-blue-900">{m.phone || '+216 -- --- ---'}</p>
                         </div>
-                        <button className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                        {/* Règle 3 : Envoi mail actif */}
+                        <a href={`mailto:${m.email}`} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                        </button>
+                        </a>
                      </div>
                   </div>
                 ))}
@@ -338,7 +369,7 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
 
-        {/* CONTENU : COACH IA */}
+        {/* ... (Reste du composant identique : AI et Modal Fiche) ... */}
         {activeTab === 'ai' && (
           <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm flex flex-col h-[600px] animate-in zoom-in-95">
              <div className="p-8 bg-blue-900 text-white flex items-center space-x-4">
@@ -374,7 +405,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
 
-        {/* MODAL FICHE CANDIDAT (DÉTAILS) */}
         {selectedMemberProfile && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
              <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-sm" onClick={() => setSelectedMemberProfile(null)}></div>
@@ -408,7 +438,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
              </div>
           </div>
         )}
-
       </main>
     </Layout>
   );
