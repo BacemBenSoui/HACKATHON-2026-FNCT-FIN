@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 
 type AdminTab = 'stats' | 'teams' | 'jury';
 
-const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) => void }> = ({ onLogout, onNavigate }) => {
+const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
   const [teams, setTeams] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -194,7 +194,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
   );
 
   return (
-    <Layout userType="admin" onLogout={onLogout} onNavigate={onNavigate}>
+    <Layout userType="admin" onNavigate={onNavigate}>
       <DashboardHeader 
         title="Centre de Pilotage FNCT 2026" 
         subtitle="Saison Innovation Territoriale - 50 ans de la Fédération."

@@ -10,11 +10,10 @@ interface FindTeamPageProps {
   userProfile: StudentProfile | null;
   setUserProfile: (p: StudentProfile) => void;
   onNavigate: (page: string) => void;
-  onLogout: () => void;
   refreshData: () => Promise<void>;
 }
 
-const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile, onNavigate, onLogout, refreshData }) => {
+const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile, onNavigate, refreshData }) => {
   const [teams, setTeams] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterRegion, setFilterRegion] = useState('');
@@ -71,7 +70,7 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
   };
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
+    <Layout userType="student" onNavigate={onNavigate}>
       <DashboardHeader title="Bourse aux Équipes" subtitle="Trouvez le projet qui correspond à vos expertises." />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

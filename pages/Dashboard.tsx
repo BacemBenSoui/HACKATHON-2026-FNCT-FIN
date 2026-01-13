@@ -10,10 +10,9 @@ interface DashboardProps {
   userProfile: StudentProfile | null;
   userTeam: Team | null;
   onNavigate: (page: string) => void;
-  onLogout: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate, onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate }) => {
   const [myApplications, setMyApplications] = useState<JoinRequest[]>([]);
   const isInTeam = !!userProfile?.currentTeamId;
   const isLeader = userProfile?.teamRole === 'leader';
@@ -101,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userProfile, userTeam, onNavigate
   const cardBaseStyle = "p-8 border border-[#E0E0E0] rounded-[8px] shadow-[0_2px_4px_rgba(0,0,0,0.1)] hover:shadow-lg transition-all active:scale-[0.98] flex flex-col justify-between group";
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate} currentTeamId={userProfile?.currentTeamId}>
+    <Layout userType="student" onNavigate={onNavigate} currentTeamId={userProfile?.currentTeamId}>
       <DashboardHeader 
         title={`Tableau de bord - ${userProfile?.firstName}`} 
         subtitle={isInTeam ? `Membre actif de : ${userTeam?.name}` : "Prêt à rejoindre une innovation ?"}

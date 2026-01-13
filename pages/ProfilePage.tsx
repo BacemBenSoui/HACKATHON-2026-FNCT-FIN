@@ -10,7 +10,6 @@ interface ProfilePageProps {
   userProfile: StudentProfile | null;
   setUserProfile: (p: StudentProfile) => void;
   onNavigate: (page: string) => void;
-  onLogout: () => void;
   refreshData: () => Promise<void>;
 }
 
@@ -18,7 +17,7 @@ const LEVELS = [
   'Licence (L1/L2/L3)', 'Master (M1/M2)', 'Cycle Ingénieur (1/2/3)', 'Doctorat', 'Expert'
 ];
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, onNavigate, onLogout, refreshData }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, onNavigate, refreshData }) => {
   const [formData, setFormData] = useState<Partial<StudentProfile>>(userProfile || {});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -98,7 +97,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, setUserProfile, 
   const allMetierSkills = useMemo(() => Object.values(METIER_SKILLS).flat(), []);
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate} currentTeamId={userProfile?.currentTeamId}>
+    <Layout userType="student" onNavigate={onNavigate} currentTeamId={userProfile?.currentTeamId}>
       <DashboardHeader title="Mon Profil Candidat" subtitle="Optimisez votre dossier pour attirer les meilleurs projets." />
       
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">

@@ -15,11 +15,10 @@ interface TeamWorkspaceProps {
   setTeam: (t: Team) => void;
   setUserProfile: (p: StudentProfile) => void;
   onNavigate: (page: string) => void;
-  onLogout: () => void;
   refreshData?: () => Promise<void>;
 }
 
-const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTeam, setUserProfile, onNavigate, onLogout, refreshData }) => {
+const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTeam, setUserProfile, onNavigate, refreshData }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
@@ -200,7 +199,7 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   if (!team) return null;
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate} currentTeamId={team.id}>
+    <Layout userType="student" onNavigate={onNavigate} currentTeamId={team.id}>
       <DashboardHeader 
         title={`Espace Pilotage : ${team.name}`} 
         subtitle={`${team.theme} | Région : ${team.preferredRegion}`}

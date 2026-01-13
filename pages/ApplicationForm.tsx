@@ -10,11 +10,10 @@ interface ApplicationFormProps {
   team: Team | null;
   setTeam: (t: Team) => void;
   onNavigate: (p: string) => void;
-  onLogout: () => void;
   refreshData?: () => Promise<void>;
 }
 
-const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavigate, onLogout, refreshData }) => {
+const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavigate, refreshData }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -155,7 +154,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
   if (!team) return null;
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate} currentTeamId={team.id}>
+    <Layout userType="student" onNavigate={onNavigate} currentTeamId={team.id}>
       <DashboardHeader 
         title="Dépôt Officiel du Dossier" 
         subtitle={`Projet : ${team.name} | Réf : ${team.id.substring(0,8)}`}

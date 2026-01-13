@@ -9,11 +9,10 @@ import { StudentProfile } from '../types';
 interface CreateTeamPageProps {
   userProfile: StudentProfile | null;
   onNavigate: (page: string) => void;
-  onLogout: () => void;
   refreshData: () => Promise<void>;
 }
 
-const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate, onLogout, refreshData }) => {
+const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate, refreshData }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -89,7 +88,7 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
   if (isInTeam || hasPendingApplications) return null;
 
   return (
-    <Layout userType="student" onLogout={onLogout} onNavigate={onNavigate}>
+    <Layout userType="student" onNavigate={onNavigate}>
       <DashboardHeader title="Nouveau Projet Municipal" subtitle="Lancez votre innovation pour les 50 ans de la FNCT." />
       <main className="max-w-4xl mx-auto px-4 py-10">
         <div className="mb-8 p-6 bg-blue-50 border-l-4 border-blue-600 rounded-r-2xl">

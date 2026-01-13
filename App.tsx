@@ -157,24 +157,6 @@ const App: React.FC = () => {
     setCurrentPage(page);
   };
 
-  const handleLogout = async () => {
-    if (confirm("Voulez-vous quitter la plateforme ?")) {
-      try {
-        await supabase.auth.signOut();
-        // Le nettoyage d'état et la redirection sont gérés par onAuthStateChange
-        // Mais par sécurité, on force le nettoyage ici aussi pour une réponse UI immédiate
-        setUserProfile(null);
-        setUserRole(null);
-        setUserTeam(null);
-        navigate('landing');
-      } catch (error) {
-        console.error("Erreur déconnexion:", error);
-        // Force la redirection même en cas d'erreur réseau
-        navigate('landing');
-      }
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-blue-900 flex items-center justify-center">
@@ -196,13 +178,13 @@ const App: React.FC = () => {
       case 'landing': return <LandingPage onNavigate={navigate} />;
       case 'login': return <LoginPage onLogin={() => navigate('dashboard')} onNavigate={navigate} />;
       case 'register': return <RegisterPage onNavigate={navigate} />;
-      case 'dashboard': return <Dashboard userProfile={userProfile} userTeam={userTeam} onNavigate={navigate} onLogout={handleLogout} />;
-      case 'profile': return <ProfilePage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'find-team': return <FindTeamPage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'create-team': return <CreateTeamPage userProfile={userProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'team-workspace': return <TeamWorkspace userProfile={userProfile} team={userTeam} setTeam={setUserTeam} setUserProfile={setUserProfile} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'application-form': return <ApplicationForm team={userTeam} setTeam={setUserTeam} onNavigate={navigate} onLogout={handleLogout} refreshData={refreshData} />;
-      case 'admin-dashboard': return <AdminDashboard onLogout={handleLogout} onNavigate={navigate} />;
+      case 'dashboard': return <Dashboard userProfile={userProfile} userTeam={userTeam} onNavigate={navigate} />;
+      case 'profile': return <ProfilePage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} refreshData={refreshData} />;
+      case 'find-team': return <FindTeamPage userProfile={userProfile} setUserProfile={setUserProfile} onNavigate={navigate} refreshData={refreshData} />;
+      case 'create-team': return <CreateTeamPage userProfile={userProfile} onNavigate={navigate} refreshData={refreshData} />;
+      case 'team-workspace': return <TeamWorkspace userProfile={userProfile} team={userTeam} setTeam={setUserTeam} setUserProfile={setUserProfile} onNavigate={navigate} refreshData={refreshData} />;
+      case 'application-form': return <ApplicationForm team={userTeam} setTeam={setUserTeam} onNavigate={navigate} refreshData={refreshData} />;
+      case 'admin-dashboard': return <AdminDashboard onNavigate={navigate} />;
       default: return <LandingPage onNavigate={navigate} />;
     }
   };

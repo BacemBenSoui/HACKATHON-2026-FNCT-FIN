@@ -4,12 +4,11 @@ import React from 'react';
 interface LayoutProps {
   children: React.ReactNode;
   userType?: 'student' | 'admin' | 'public';
-  onLogout?: () => void;
   onNavigate?: (page: string) => void;
   currentTeamId?: string | null;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onLogout, onNavigate, currentTeamId }) => {
+const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNavigate, currentTeamId }) => {
   const isInTeam = !!currentTeamId;
 
   const openGuideDidactiel = () => {
@@ -86,15 +85,6 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onLogout
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Session</p>
                     <p className="text-xs font-black text-blue-900 uppercase tracking-tight">{userType === 'admin' ? 'Pilotage' : 'Candidat'}</p>
                   </div>
-                  {/* Utilisation de onLogout (qui fait une navigation simple vers landing en vidant les états) pour résoudre le point 6 */}
-                  <button 
-                    onClick={onLogout}
-                    className="flex items-center space-x-2 px-4 py-2 text-gray-400 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-100 group"
-                    title="Se déconnecter de la plateforme"
-                  >
-                    <span className="hidden md:block text-[9px] font-black uppercase tracking-widest group-hover:translate-x-[-4px] transition-transform">Déconnexion</span>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                  </button>
                 </div>
               )}
             </div>
