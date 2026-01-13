@@ -100,6 +100,9 @@ const App: React.FC = () => {
              .select('profile_id, profiles(first_name, last_name, email, phone, tech_skills, metier_skills, gender), role')
              .eq('team_id', membership.team_id);
 
+          // Gestion robuste de la casse pour 'Statut'
+          const teamStatus = teamData.Statut || teamData.statut || 'incomplete';
+
           setUserTeam({
             id: teamData.id,
             name: teamData.name,
@@ -108,8 +111,8 @@ const App: React.FC = () => {
             theme: teamData.theme,
             secondaryTheme: teamData.secondary_theme,
             secondaryThemeDescription: teamData.secondary_theme_description,
-            // MAPPAGE BDD : Utilisation de Statut (text) au lieu de status (type)
-            status: teamData.Statut || 'incomplete', 
+            // MAPPAGE BDD : Utilisation de Statut (text)
+            status: teamStatus, 
             preferredRegion: teamData.preferred_region,
             videoUrl: teamData.video_url,
             pocUrl: teamData.poc_url,

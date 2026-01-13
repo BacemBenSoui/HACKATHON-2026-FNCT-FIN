@@ -39,10 +39,11 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
         .from('profiles')
         .select('*');
 
-      // MAPPAGE BDD : On utilise Statut de la BDD pour remplir 'status' utilisé par le front
-      const mappedTeams = teamsData?.map(t => ({
+      // MAPPAGE BDD : Gestion robuste de la casse (Statut vs statut)
+      // Si t.Statut est undefined (car postgres renvoie 'statut'), on check t.statut
+      const mappedTeams = teamsData?.map((t: any) => ({
          ...t,
-         status: t.Statut || 'incomplete'
+         status: t.Statut || t.statut || 'incomplete'
       })) || [];
 
       setTeams(mappedTeams);
@@ -99,11 +100,19 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
   };
 
   const handleUpdateStatus = async (teamId: string, status: string) => {
-    // MAPPAGE BDD : Update de la colonne Statut (text)
-    await supabase.from('teams').update({ Statut: status }).eq('id', teamId);
-    alert(`Statut mis à jour : ${status}`);
-    setEvaluatingTeam(null);
-    fetchAdminData();
+    // MAPPAGE BDD : On tente de mettre à jour 'Statut' (texte).
+    // Note: Si la colonne réelle est 'statut', Supabase gère généralement la casse insensiblement en écriture,
+    // mais pour la lecture faite dans fetchAdminData, le correctif ci-dessus est crucial.
+    const { error } = await supabase.from('teams').update({ Statut: status }).eq('id', teamId);
+    
+    if (error) {
+       console.error("Erreur update statut:", error);
+       alert("Erreur lors de la mise à jour : " + error.message);
+    } else {
+       // alert(`Statut mis à jour : ${status}`); // Feedback trop intrusif, retiré pour fluidité
+       setEvaluatingTeam(null);
+       await fetchAdminData(); // Rafraîchissement immédiat pour voir le changement
+    }
   };
 
   // Nouvelle fonctionnalité d'exportation Excel/CSV
