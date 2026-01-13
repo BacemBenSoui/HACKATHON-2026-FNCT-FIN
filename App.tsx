@@ -21,15 +21,27 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Gestionnaire d'état d'authentification robuste
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // console.log("Auth Event:", event); // Debug
+      
       if (session) {
-        await fetchUserData(session.user.id);
+        // L'utilisateur est connecté, on charge ses données
+        try {
+          await fetchUserData(session.user.id);
+        } catch (err) {
+          console.error("Erreur chargement données utilisateur:", err);
+          // En cas d'erreur critique de données, on ne bloque pas l'UI sur loading
+        }
       } else {
+        // L'utilisateur est déconnecté (ou pas encore connecté)
         setUserProfile(null);
         setUserRole(null);
         setUserTeam(null);
         setCurrentPage('landing');
       }
+      
+      // On arrête le chargement dans tous les cas une fois la vérification terminée
       setIsLoading(false);
     });
 
@@ -96,14 +108,16 @@ const App: React.FC = () => {
             theme: teamData.theme,
             secondaryTheme: teamData.secondary_theme,
             secondaryThemeDescription: teamData.secondary_theme_description,
-            status: teamData.status,
+            // MAPPAGE BDD : Utilisation de Statut (text) au lieu de status (type)
+            status: teamData.Statut || 'incomplete', 
             preferredRegion: teamData.preferred_region,
             videoUrl: teamData.video_url,
             pocUrl: teamData.poc_url,
             motivationUrl: teamData.motivation_url,
-            lettreMotivationUrl: teamData.lettre_motivation_url,
+            // MAPPAGE BDD : Colonnes absentes du schéma fourni, initialisation vide pour éviter crash
+            lettreMotivationUrl: '', 
+            requestedSkills: [], 
             joinRequests: [],
-            requestedSkills: teamData.requested_skills || [],
             members: allMembers?.map((m: any) => ({
               id: m.profile_id,
               name: m.profiles ? `${m.profiles.first_name} ${m.profiles.last_name}` : 'Utilisateur',
@@ -124,6 +138,7 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error("Error fetching user data:", e);
+      throw e; // Propager pour que le catch supérieur le gère si besoin
     }
   };
 
@@ -139,15 +154,21 @@ const App: React.FC = () => {
     setCurrentPage(page);
   };
 
-  const handleLogout = () => {
-    // Règle 6 : Désactivation du script complexe, navigation simple vers l'accueil
-    // Supabase gère la session, mais ici on force le nettoyage local des états
+  const handleLogout = async () => {
     if (confirm("Voulez-vous quitter la plateforme ?")) {
-      supabase.auth.signOut().catch(() => {});
-      setUserProfile(null);
-      setUserRole(null);
-      setUserTeam(null);
-      navigate('landing');
+      try {
+        await supabase.auth.signOut();
+        // Le nettoyage d'état et la redirection sont gérés par onAuthStateChange
+        // Mais par sécurité, on force le nettoyage ici aussi pour une réponse UI immédiate
+        setUserProfile(null);
+        setUserRole(null);
+        setUserTeam(null);
+        navigate('landing');
+      } catch (error) {
+        console.error("Erreur déconnexion:", error);
+        // Force la redirection même en cas d'erreur réseau
+        navigate('landing');
+      }
     }
   };
 

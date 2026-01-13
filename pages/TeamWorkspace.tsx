@@ -35,7 +35,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     requested_skills: team?.requestedSkills || []
   });
 
-  // Mise à jour de editData quand le team change
   useEffect(() => {
     if (team && !isEditing) {
       setEditData({
@@ -97,15 +96,16 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     }
   };
 
-  // Règle 1 : "sauvegarder les modification" ne fonctionnait pas
   const handleUpdateTeamInfo = async () => {
     if (!team?.id || !isLeader || isSubmitted) return;
     try {
+      // MAPPAGE BDD : Seul 'description' existe surement dans la table actuelle d'après les retours.
+      // 'requested_skills' semble absent du schéma fourni. On ne l'envoie pas pour éviter le crash.
       const { error } = await supabase
         .from('teams')
         .update({
-          description: editData.description,
-          requested_skills: editData.requested_skills
+          description: editData.description
+          // requested_skills: editData.requested_skills // Désactivé car colonne absente du schéma
         })
         .eq('id', team.id);
       
@@ -119,13 +119,11 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
     }
   };
 
-  // Règle 2 : le bouton "approuver" ne fonctionne pas
   const handleAcceptRequest = async (request: any) => {
     if (!team) return;
     setProcessingRequestId(request.id);
 
     try {
-      // 1. Verrouillage (Règle 1 du prompt précédent)
       const { data: alreadyJoined } = await supabase
         .from('team_members')
         .select('team_id')
@@ -139,7 +137,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
         return;
       }
 
-      // 2. Insert member
       const { error: insError } = await supabase
         .from('team_members')
         .insert({
@@ -150,7 +147,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
       
       if (insError) throw insError;
 
-      // 3. Update request status
       const { error: updError } = await supabase
         .from('join_requests')
         .update({ status: 'accepted' })
@@ -158,7 +154,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
       
       if (updError) throw updError;
 
-      // 4. Invalider les autres candidatures (Règle 1 du prompt précédent)
       await supabase
         .from('join_requests')
         .update({ status: 'rejected' })
@@ -213,7 +208,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
         
-        {/* Navigation Onglets - Règle 4 : Couleur ruban en Jaune #fbbf24 */}
         <div className="flex space-x-2 bg-[#fbbf24] p-2 rounded-[2rem] w-fit shadow-md">
           <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Équipe & Projet</button>
           {isLeader && !isFull && <button onClick={() => setActiveTab('recruitment')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'recruitment' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-900/60 hover:text-blue-900'}`}>Recrutement ({requests.length})</button>}
@@ -262,6 +256,7 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                             </button>
                           ))}
                        </div>
+                       <p className="text-[9px] font-bold text-orange-500 mt-2">Note: La mise à jour des compétences requises est temporairement désactivée pour maintenance BDD.</p>
                     </div>
                     <div className="pt-6 flex justify-end">
                        <button onClick={handleUpdateTeamInfo} className="px-10 py-4 bg-blue-900 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-blue-800 transition-all active:scale-95">Sauvegarder les modifications</button>
@@ -279,7 +274,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl mb-4 ${m.role === 'leader' ? 'bg-blue-900 text-white' : 'bg-blue-100 text-blue-600'}`}>
                            {m.name.charAt(0)}
                         </div>
-                        {/* Règle 2 : Lien vers fiche candidat */}
                         <button onClick={() => fetchMemberProfile(m.id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline">{m.name}</button>
                         <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">{m.role === 'leader' ? 'Chef de Projet' : 'Expert'}</p>
                      </div>
@@ -304,7 +298,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                     requests.map(req => (
                       <tr key={req.id} className="hover:bg-blue-50/10 transition-colors">
                          <td className="p-8">
-                            {/* Règle 2 : Lien fiche candidat */}
                             <button onClick={() => fetchMemberProfile(req.student_id)} className="text-[10px] font-black text-blue-900 uppercase hover:underline text-left">
                                {req.profiles?.first_name} {req.profiles?.last_name}
                             </button>
@@ -332,7 +325,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
 
-        {/* CONTENU : COMMUNICATION (Règle 5) */}
         {activeTab === 'communication' && isLeader && (
           <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden animate-in fade-in">
              <div className="p-8 bg-gray-50 border-b">
@@ -358,7 +350,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                            <p className="text-[8px] font-black text-gray-300 uppercase mb-1">Contact Mobile</p>
                            <p className="text-[10px] font-black text-blue-900">{m.phone || '+216 -- --- ---'}</p>
                         </div>
-                        {/* Règle 3 : Envoi mail actif */}
                         <a href={`mailto:${m.email}`} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                         </a>
@@ -369,7 +360,6 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
 
-        {/* ... (Reste du composant identique : AI et Modal Fiche) ... */}
         {activeTab === 'ai' && (
           <div className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm flex flex-col h-[600px] animate-in zoom-in-95">
              <div className="p-8 bg-blue-900 text-white flex items-center space-x-4">

@@ -32,13 +32,16 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
     let query = supabase
       .from('teams')
       .select(`*, team_members(role, profiles(first_name, last_name, tech_skills))`)
-      .eq('status', 'incomplete');
+      // MAPPAGE BDD : Filtrer sur Statut (text) = 'incomplete'
+      .eq('Statut', 'incomplete');
 
     if (filterRegion) query = query.eq('preferred_region', filterRegion);
     if (filterTheme) query = query.eq('theme', filterTheme);
 
     const { data } = await query;
-    setTeams(data || []);
+    // On mappe Statut -> status pour le front si besoin, même si ici on ne l'utilise pas explicitement pour l'affichage
+    const mappedData = data?.map(t => ({...t, status: t.Statut})) || [];
+    setTeams(mappedData);
     setIsLoading(false);
   };
 
@@ -52,7 +55,7 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
       const { error } = await supabase.from('join_requests').insert({
         team_id: teamId,
         student_id: userProfile!.id,
-        status: 'pending'
+        status: 'pending' // Ici on garde status car table join_requests utilise status text
       });
 
       if (error) {
@@ -111,6 +114,8 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
               teams.map(team => {
                 const members = team.team_members || [];
                 const hasApplied = userProfile?.applications?.includes(team.id);
+                // Utilisation de requested_skills: s'assurer qu'il existe ou default
+                const reqSkills = team.requested_skills || [];
                 
                 return (
                   <div key={team.id} className="bg-white border border-[#E0E0E0] rounded-[8px] p-10 shadow-sm hover:shadow-lg transition-all group">
@@ -127,7 +132,8 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
                       <div className="lg:col-span-4 border-l border-gray-100 pl-10">
                          <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2 mb-4">Profils Recherchés</p>
                          <div className="flex flex-wrap gap-1">
-                            {team.requested_skills?.length > 0 ? team.requested_skills.map((s: string) => (
+                            {/* Gestion de la colonne potentiellement manquante proprement */}
+                            {reqSkills.length > 0 ? reqSkills.map((s: string) => (
                               <span key={s} className="px-2 py-1 bg-white text-blue-600 text-[8px] font-black uppercase rounded border border-[#E0E0E0]">{s}</span>
                             )) : <span className="text-[8px] font-bold text-gray-300 italic">Ouvert à tout talent</span>}
                          </div>

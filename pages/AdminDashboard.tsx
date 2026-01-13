@@ -39,7 +39,13 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
         .from('profiles')
         .select('*');
 
-      setTeams(teamsData || []);
+      // MAPPAGE BDD : On utilise Statut de la BDD pour remplir 'status' utilisé par le front
+      const mappedTeams = teamsData?.map(t => ({
+         ...t,
+         status: t.Statut || 'incomplete'
+      })) || [];
+
+      setTeams(mappedTeams);
       setProfiles(profilesData || []);
     } catch (err) {
       console.error("Error fetching admin data:", err);
@@ -93,7 +99,8 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
   };
 
   const handleUpdateStatus = async (teamId: string, status: string) => {
-    await supabase.from('teams').update({ status }).eq('id', teamId);
+    // MAPPAGE BDD : Update de la colonne Statut (text)
+    await supabase.from('teams').update({ Statut: status }).eq('id', teamId);
     alert(`Statut mis à jour : ${status}`);
     setEvaluatingTeam(null);
     fetchAdminData();
@@ -129,6 +136,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void, onNavigate: (p: string) =
           id: associatedTeam.id || "",
           region: associatedTeam.preferred_region || "",
           theme: associatedTeam.theme || "",
+          // Utilisation du status mappé
           status: STATUS_LABELS[associatedTeam.status] || associatedTeam.status,
           role: memberRecord?.role === 'leader' ? "Chef de Projet" : "Membre Expert"
         };

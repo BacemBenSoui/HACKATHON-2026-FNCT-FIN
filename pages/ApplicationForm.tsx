@@ -92,11 +92,13 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ team, setTeam, onNavi
       video_url: formData.videoUrl || null,
       poc_url: formData.pocUrl || null,
       motivation_url: formData.motivationUrl || null,
-      lettre_motivation_url: formData.lettreMotivationUrl || null,
+      // MAPPAGE BDD : lettre_motivation_url supprimée car absente du schéma fourni
+      // lettre_motivation_url: formData.lettreMotivationUrl || null,
       description: formData.description || null,
       secondary_theme: formData.secondaryTheme || null,
       secondary_theme_description: formData.secondaryThemeDescription || null,
-      status: 'submitted'
+      // MAPPAGE BDD : Statut (text) = 'submitted'
+      Statut: 'submitted'
     };
 
     try {

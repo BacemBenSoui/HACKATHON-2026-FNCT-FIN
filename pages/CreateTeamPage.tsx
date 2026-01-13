@@ -55,7 +55,8 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
           theme: formData.theme,
           secondary_theme: formData.secondaryTheme,
           preferred_region: formData.region,
-          status: 'incomplete'
+          // MAPPAGE BDD : Colonne Statut (text) au lieu de status
+          Statut: 'incomplete'
         })
         .select().single();
 
