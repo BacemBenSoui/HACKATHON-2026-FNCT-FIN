@@ -10,7 +10,7 @@ interface LandingPageProps {
 
 // Image 50 Ans FNCT - Chargée depuis le dossier local /img
 // Correction : Utilisation de "/" au lieu de "\"
-const SPLASH_IMAGE_URL = "/img/Image_50_anniv.jpg"; 
+const SPLASH_IMAGE_URL = '/img/Image_50_anniv.jpg'; 
 
 const CountdownTimer = () => {
   const targetDate = new Date('2026-04-03T09:00:00').getTime();
