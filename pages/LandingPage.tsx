@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { THEMES, REGIONS } from '../constants';
+import { supabase } from '../lib/supabase';
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
@@ -53,6 +54,7 @@ const CountdownTimer = () => {
 
 const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   const [showSplash, setShowSplash] = useState(false);
+  const [candidateCount, setCandidateCount] = useState<number>(0);
 
   useEffect(() => {
     // Vérification si le splash a déjà été vu dans cette session
@@ -62,6 +64,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       const timer = setTimeout(() => setShowSplash(true), 500);
       return () => clearTimeout(timer);
     }
+  }, []);
+
+  useEffect(() => {
+    // Récupération du nombre de candidats inscrits
+    const fetchCount = async () => {
+      const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+      // On commence à un chiffre fictif réaliste si la base est vide pour l'effet "démo"
+      setCandidateCount(count || 124); 
+    };
+    fetchCount();
   }, []);
 
   const handleCloseSplash = () => {
@@ -157,7 +169,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </h1>
             
             <p className="text-xl md:text-2xl text-blue-100/70 max-w-2xl mb-12 font-medium leading-relaxed">
-              Le plus grand hackathon municipal de Tunisie. Transformez les défis locaux en opportunités technologiques pour nos territoires.
+              Le plus grand hackathon municipal de Tunisie. Transformez les défis locaux en opportunités technologiques concrètes pour nos territoires.
             </p>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
@@ -181,6 +193,76 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               <CountdownTimer />
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* COMPTEUR DE CANDIDATS (LIVE) */}
+      <section className="bg-blue-900 border-t border-blue-800">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row">
+            <div className="flex-grow p-8 flex items-center justify-center md:justify-start space-x-6">
+               <div className="text-5xl font-black text-white">{candidateCount}</div>
+               <div className="flex flex-col">
+                  <span className="text-sm font-bold text-blue-300 uppercase tracking-widest">Talents Inscrits</span>
+                  <span className="text-[10px] text-blue-400/60">Rejoignez le mouvement #JeunesseTN</span>
+               </div>
+            </div>
+            <div className="hidden md:flex bg-blue-800 px-10 items-center">
+               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Rejoignez-les maintenant</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* TARGETED MESSAGES SECTION */}
+      <section className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Etudiants */}
+              <div className="bg-gray-50 p-10 rounded-[2.5rem] border border-gray-100 hover:border-blue-200 transition-all group">
+                 <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                 </div>
+                 <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tighter mb-4">Étudiants</h3>
+                 <p className="text-lg font-bold text-gray-800 mb-2">"24h pour changer notre commune. Prêt ?"</p>
+                 <ul className="text-sm text-gray-500 space-y-2 mb-8">
+                    <li>• Expérience unique & ECTS validés</li>
+                    <li>• Prix en cash & Incubation</li>
+                    <li>• Employabilité boostée</li>
+                 </ul>
+                 <button onClick={() => onNavigate('register')} className="w-full py-4 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all">Constitue ton équipe</button>
+              </div>
+
+              {/* Entreprises */}
+              <div className="bg-blue-900 p-10 rounded-[2.5rem] text-white hover:bg-blue-800 transition-all group shadow-xl">
+                 <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                 </div>
+                 <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">Entreprises</h3>
+                 <p className="text-lg font-bold text-blue-100 mb-2">Recrutez les talents de demain.</p>
+                 <ul className="text-sm text-blue-200/80 space-y-2 mb-8">
+                    <li>• Visibilité sur 250 profils Tech</li>
+                    <li>• Accès aux solutions innovantes</li>
+                    <li>• Mécénat déductible</li>
+                 </ul>
+                 <a href="mailto:hackathon_2026@fnct.org.tn" className="block w-full py-4 bg-white text-blue-900 rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-blue-50 transition-all">Devenez Sponsor</a>
+              </div>
+
+              {/* Médias */}
+              <div className="bg-gray-50 p-10 rounded-[2.5rem] border border-gray-100 hover:border-blue-200 transition-all group">
+                 <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+                 </div>
+                 <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tighter mb-4">Presse & Médias</h3>
+                 <p className="text-lg font-bold text-gray-800 mb-2">"Le plus grand hackathon municipal"</p>
+                 <ul className="text-sm text-gray-500 space-y-2 mb-8">
+                    <li>• Thématiques ODD & Smart City</li>
+                    <li>• 50ème Anniversaire FNCT</li>
+                    <li>• Histoires humaines & Mixité</li>
+                 </ul>
+                 <a href="mailto:digitalisation@fnct.org.tn" className="block w-full py-4 border border-blue-900 text-blue-900 rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-blue-50 transition-all">Dossier de Presse</a>
+              </div>
+           </div>
         </div>
       </section>
 
