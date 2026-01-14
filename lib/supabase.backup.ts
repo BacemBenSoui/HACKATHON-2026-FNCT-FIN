@@ -1,18 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// ------------------------------------------------------------------
-// NOTE TECHNIQUE - TRANSACTION POOL
-// ------------------------------------------------------------------
-// La connexion directe demandée via Transaction Pool :
-// URL: postgresql://postgres.qfvccstjrssjsgwysgkk:hack_fnct_2026@aws-1-eu-west-1.pooler.supabase.com:6543/postgres
-//
-// ATTENTION : Cette connexion directe (TCP) est impossible depuis un navigateur (Client-side React).
-// Elle nécessite un environnement serveur (Node.js/Edge Functions).
-// L'application continue d'utiliser l'API HTTP Supabase ci-dessous pour fonctionner.
-// Pour utiliser le Transaction Pool, il faudrait migrer la logique métier vers un Backend API.
-// ------------------------------------------------------------------
-
 // Fonction utilitaire pour accéder aux variables d'environnement de manière sécurisée
 // Compatible Vite (import.meta.env) et environnements sans build step
 const getEnv = (key: string, fallback: string): string => {
