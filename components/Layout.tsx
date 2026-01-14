@@ -12,14 +12,6 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNavigate, currentTeamId }) => {
   const isInTeam = !!currentTeamId;
 
-  const openGuideDidactiel = () => {
-    window.open("https://drive.google.com/file/d/1sHHNDVJC23Y5lvLLtr5pv5aoeekR4T-5/view?usp=sharing", "_blank");
-  };
-
-  const openGuideParticipation = () => {
-    window.open("https://drive.google.com/file/d/1Omc4sAu6fPgWRfidcQ_nV8l_hQjRlCWO/view?usp=sharing", "_blank");
-  };
-
   const handleLogout = () => {
     // 1. Redirection immédiate (Systematique) pour UX instantanée
     if (onNavigate) onNavigate('landing');
@@ -53,18 +45,6 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNaviga
                   className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
                 >
                   Accueil
-                </button>
-                <button 
-                  onClick={openGuideDidactiel}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase tracking-tight hover:bg-blue-100 transition-colors"
-                >
-                  Guide Didactiel
-                </button>
-                <button 
-                  onClick={openGuideParticipation}
-                  className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tight hover:bg-emerald-100 transition-colors"
-                >
-                  Guide de Participation
                 </button>
               </div>
             </div>

@@ -7,14 +7,27 @@ import { supabase } from '../lib/supabase';
 
 type AdminTab = 'stats' | 'teams' | 'jury';
 
+interface EmailDraft {
+  status: string;
+  to: string;
+  subject: string;
+  body: string;
+  teamId: string;
+}
+
 const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
   const [teams, setTeams] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // États pour la modale d'évaluation
   const [evaluatingTeam, setEvaluatingTeam] = useState<any | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [evaluationScores, setEvaluationScores] = useState<Record<string, number>>({});
+  
+  // États pour la modale d'email
+  const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
 
   useEffect(() => {
     fetchAdminData();
@@ -39,8 +52,6 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
         .from('profiles')
         .select('*');
 
-      // MAPPAGE BDD : Gestion robuste de la casse (Statut vs statut)
-      // Si t.Statut est undefined (car postgres renvoie 'statut'), on check t.statut
       const mappedTeams = teamsData?.map((t: any) => ({
          ...t,
          status: t.Statut || t.statut || 'incomplete'
@@ -99,23 +110,70 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
     return Math.min(Math.round(baseScore + bonusSkill + evalScore), 100);
   };
 
-  const handleUpdateStatus = async (teamId: string, status: string) => {
-    // MAPPAGE BDD : On tente de mettre à jour 'Statut' (texte).
-    // Note: Si la colonne réelle est 'statut', Supabase gère généralement la casse insensiblement en écriture,
-    // mais pour la lecture faite dans fetchAdminData, le correctif ci-dessus est crucial.
-    const { error } = await supabase.from('teams').update({ Statut: status }).eq('id', teamId);
+  // Préparation de l'email avant ouverture modale
+  const handleDecisionClick = (team: any, status: string) => {
+    // Récupération des emails (Chef + Membres)
+    const recipients = [
+      team.leader?.email,
+      ...team.members.map((m: any) => m.profiles?.email)
+    ].filter(Boolean).join(', '); // Note: Pour mailto, souvent ';' ou ',' selon le client. ',' est standard web.
+
+    const leaderName = `${team.leader?.first_name || 'Chef'} ${team.leader?.last_name || 'de Projet'}`;
+    let subject = "";
+    let decisionText = "";
+
+    switch (status) {
+      case 'selected':
+        subject = `Félicitations ! Acceptation de votre dossier FNCT - ${team.name}`;
+        decisionText = "ACCEPTER";
+        break;
+      case 'rejected':
+        subject = `Mise à jour concernant votre candidature FNCT - ${team.name}`;
+        decisionText = "REFUSER";
+        break;
+      case 'waitlist':
+        subject = `Votre dossier FNCT en liste d'attente - ${team.name}`;
+        decisionText = "METTRE EN ATTENTE";
+        break;
+      default:
+        subject = `Information Hackathon FNCT - ${team.name}`;
+        decisionText = "TRAITER";
+    }
+
+    const body = `Bonjour ${leaderName} et l'équipe,\n\nSuite à la soumission de votre dossier de candidature au hackathon FNCT 2026, les membres du jury ont décidé de ${decisionText} votre dossier.\n\nNous restons à votre disposition pour tout complément d'information.\n\nCordialement,\nLe Jury FNCT 2026`;
+
+    setEmailDraft({
+      teamId: team.id,
+      status: status,
+      to: recipients,
+      subject: subject,
+      body: body
+    });
+  };
+
+  const handleSendEmailAndSave = async () => {
+    if (!emailDraft) return;
+
+    // 1. Mise à jour Base de Données
+    const { error } = await supabase.from('teams').update({ Statut: emailDraft.status }).eq('id', emailDraft.teamId);
     
     if (error) {
        console.error("Erreur update statut:", error);
-       alert("Erreur lors de la mise à jour : " + error.message);
-    } else {
-       // alert(`Statut mis à jour : ${status}`); // Feedback trop intrusif, retiré pour fluidité
-       setEvaluatingTeam(null);
-       await fetchAdminData(); // Rafraîchissement immédiat pour voir le changement
+       alert("Erreur lors de la mise à jour BDD : " + error.message);
+       return;
     }
+
+    // 2. Ouverture Client Mail
+    const mailtoLink = `mailto:?bcc=${encodeURIComponent(emailDraft.to)}&subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
+    window.location.href = mailtoLink;
+
+    // 3. Fermeture et Rafraîchissement
+    setEmailDraft(null);
+    setEvaluatingTeam(null);
+    await fetchAdminData();
+    alert("Statut mis à jour et client mail ouvert.");
   };
 
-  // Nouvelle fonctionnalité d'exportation Excel/CSV
   const handleExportCSV = () => {
     const headers = [
       "ID Candidat", "Prénom", "Nom", "Email", "Téléphone", "Université", "Niveau", "Genre",
@@ -124,7 +182,6 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
     ];
 
     const rows = profiles.map(profile => {
-      // Trouver l'équipe du candidat
       const associatedTeam = teams.find(t => 
         t.members.some((m: any) => m.profile_id === profile.id)
       );
@@ -145,13 +202,11 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
           id: associatedTeam.id || "",
           region: associatedTeam.preferred_region || "",
           theme: associatedTeam.theme || "",
-          // Utilisation du status mappé
           status: STATUS_LABELS[associatedTeam.status] || associatedTeam.status,
           role: memberRecord?.role === 'leader' ? "Chef de Projet" : "Membre Expert"
         };
       }
 
-      // Nettoyage des données pour le CSV (échappement des guillemets)
       const clean = (text: string) => `"${(text || '').toString().replace(/"/g, '""')}"`;
 
       return [
@@ -296,7 +351,7 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
                    <th className="px-10 py-6 text-right">Actions</th>
                  </tr>
                </thead>
-               <tbody className="divide-y divide-gray-50">
+               <tbody className="divide-y divide-gray-100">
                   {teams.map(team => (
                     <tr key={team.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-10 py-6">
@@ -394,6 +449,7 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
           </div>
         )}
 
+        {/* MODALE D'ÉVALUATION DU DOSSIER */}
         {evaluatingTeam && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/90 backdrop-blur-md overflow-y-auto">
              <div className="bg-white w-full max-w-6xl rounded-[4rem] shadow-2xl overflow-hidden flex flex-col h-[90vh] animate-in zoom-in-95 duration-300">
@@ -452,9 +508,9 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
                                </div>
                             </div>
                             <div className="pt-4 flex flex-col gap-3">
-                               <button onClick={() => handleUpdateStatus(evaluatingTeam.id, 'selected')} className="w-full py-5 bg-emerald-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl hover:bg-emerald-700 transition-all">SÉLECTIONNER</button>
-                               <button onClick={() => handleUpdateStatus(evaluatingTeam.id, 'rejected')} className="w-full py-5 bg-red-600 text-white text-[11px] font-black uppercase rounded-2xl hover:bg-red-700 transition-all">REJETER</button>
-                               <button onClick={() => handleUpdateStatus(evaluatingTeam.id, 'waitlist')} className="w-full py-5 border-2 border-orange-200 text-orange-500 text-[11px] font-black uppercase rounded-2xl hover:bg-orange-50 transition-all">LISTE D'ATTENTE</button>
+                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'selected')} className="w-full py-5 bg-emerald-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl hover:bg-emerald-700 transition-all">SÉLECTIONNER</button>
+                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'rejected')} className="w-full py-5 bg-red-600 text-white text-[11px] font-black uppercase rounded-2xl hover:bg-red-700 transition-all">REJETER</button>
+                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'waitlist')} className="w-full py-5 border-2 border-orange-200 text-orange-500 text-[11px] font-black uppercase rounded-2xl hover:bg-orange-50 transition-all">LISTE D'ATTENTE</button>
                             </div>
                          </section>
                       </div>
@@ -499,6 +555,63 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
           </div>
         )}
 
+        {/* MODALE D'ENVOI D'EMAIL (NEW) */}
+        {emailDraft && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm">
+             <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10">
+                <div className="bg-blue-900 px-8 py-6 flex justify-between items-center">
+                   <h3 className="text-white text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      Communication Jury
+                   </h3>
+                   <button onClick={() => setEmailDraft(null)} className="text-white/50 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                </div>
+                
+                <div className="p-8 space-y-6">
+                   <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Destinataires (Cachés)</label>
+                      <input 
+                         type="text" 
+                         readOnly 
+                         value={emailDraft.to} 
+                         className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-600" 
+                      />
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Sujet</label>
+                      <input 
+                         type="text" 
+                         value={emailDraft.subject} 
+                         onChange={(e) => setEmailDraft({...emailDraft, subject: e.target.value})} 
+                         className="w-full p-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-blue-900 focus:ring-2 focus:ring-blue-600 outline-none" 
+                      />
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Corps du message</label>
+                      <textarea 
+                         rows={8}
+                         value={emailDraft.body}
+                         onChange={(e) => setEmailDraft({...emailDraft, body: e.target.value})} 
+                         className="w-full p-4 bg-white border border-gray-200 rounded-xl text-sm leading-relaxed text-gray-700 focus:ring-2 focus:ring-blue-600 outline-none" 
+                      ></textarea>
+                   </div>
+                </div>
+
+                <div className="p-6 bg-gray-50 border-t flex justify-end gap-3">
+                   <button onClick={() => setEmailDraft(null)} className="px-6 py-3 text-gray-500 font-bold text-xs uppercase hover:bg-gray-200 rounded-xl transition-all">Annuler</button>
+                   <button 
+                      onClick={handleSendEmailAndSave} 
+                      className="px-8 py-3 bg-blue-600 text-white font-black text-xs uppercase rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center gap-2"
+                   >
+                      <span>Confirmer & Envoyer</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                   </button>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* MODALE CANDIDAT (EXISTANTE) */}
         {selectedCandidate && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
              <div className="absolute inset-0 bg-blue-900/80 backdrop-blur-lg" onClick={() => setSelectedCandidate(null)}></div>

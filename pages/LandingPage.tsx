@@ -7,6 +7,10 @@ interface LandingPageProps {
   onNavigate: (page: string) => void;
 }
 
+// Image 50 Ans FNCT - Chargée depuis le dossier local /img
+// Correction : Utilisation de "/" au lieu de "\"
+const SPLASH_IMAGE_URL = "/img/Image_50_anniv.jpg"; 
+
 const CountdownTimer = () => {
   const targetDate = new Date('2026-04-03T09:00:00').getTime();
   const [timeLeft, setTimeLeft] = useState({
@@ -48,6 +52,23 @@ const CountdownTimer = () => {
 };
 
 const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
+  const [showSplash, setShowSplash] = useState(false);
+
+  useEffect(() => {
+    // Vérification si le splash a déjà été vu dans cette session
+    const hasSeenSplash = sessionStorage.getItem('fnct_splash_seen');
+    if (!hasSeenSplash) {
+      // Petit délai pour l'animation
+      const timer = setTimeout(() => setShowSplash(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleCloseSplash = () => {
+    setShowSplash(false);
+    sessionStorage.setItem('fnct_splash_seen', 'true');
+  };
+
   const themeColors = [
     'bg-[#1e3a8a]', // Bleu foncé
     'bg-[#38bdf8]', // Bleu Ciel
@@ -56,15 +77,76 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
     'bg-[#fbbf24]'  // Jaune
   ];
 
+  const openGuideDidactiel = () => {
+    window.open("https://drive.google.com/file/d/1sHHNDVJC23Y5lvLLtr5pv5aoeekR4T-5/view?usp=sharing", "_blank");
+  };
+
+  const openGuideParticipation = () => {
+    window.open("https://drive.google.com/file/d/1Omc4sAu6fPgWRfidcQ_nV8l_hQjRlCWO/view?usp=sharing", "_blank");
+  };
+
   return (
     <Layout onNavigate={onNavigate}>
+      
+      {/* SPLASH SCREEN MODAL */}
+      {showSplash && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/80 backdrop-blur-md transition-opacity duration-500 animate-in fade-in">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 p-2 border-4 border-white">
+            <button 
+              onClick={handleCloseSplash}
+              className="absolute top-4 right-4 z-50 w-10 h-10 bg-white text-gray-800 rounded-full flex items-center justify-center shadow-lg hover:bg-red-500 hover:text-white transition-all transform hover:rotate-90 hover:scale-110"
+              aria-label="Fermer"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            <div className="relative rounded-2xl overflow-hidden bg-gray-100 flex items-center justify-center min-h-[300px] sm:min-h-[500px]">
+               {/* Image principale - Remplacez SPLASH_IMAGE_URL par votre lien */}
+               <img 
+                 src={SPLASH_IMAGE_URL} 
+                 alt="50 Ans FNCT" 
+                 className="w-full h-full object-contain sm:object-cover"
+               />
+               
+               {/* Fallback texte si l'image ne charge pas (optionnel) */}
+               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0">
+                  <span className="text-gray-400 font-bold uppercase">Chargement de l'affiche...</span>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HERO SECTION */}
       <section className="relative min-h-[85vh] flex items-center bg-blue-900 text-white overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,_rgba(30,58,138,0.8),_transparent)] z-10"></div>
         <div className="absolute inset-0 opacity-20 grayscale bg-[url('https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&q=80')] bg-cover bg-center scale-110"></div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 w-full pt-20">
-          <div className="max-w-4xl">
+          {/* BOUTONS GUIDES - Positionnés en haut à droite de la section Hero */}
+          <div className="absolute top-6 right-4 sm:right-8 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6 z-50">
+            {/* Bouton Jaune : Guide de Participation */}
+            <button 
+              onClick={openGuideDidactiel}
+              className="flex items-center space-x-3 px-6 py-3 bg-[#fbbf24] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-yellow-500 hover:scale-105 transition-all border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>GUIDE DE PARTICIPATION</span>
+            </button>
+            
+            {/* Bouton Vert : Guide du Candidat */}
+            <button 
+              onClick={openGuideParticipation}
+              className="flex items-center space-x-3 px-6 py-3 bg-[#10b981] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-emerald-600 hover:scale-105 transition-all border-b-4 border-emerald-700 active:border-b-0 active:translate-y-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+              <span>GUIDE DU CANDIDAT</span>
+            </button>
+          </div>
+
+          <div className="max-w-4xl mt-24 sm:mt-0">
             <div className="inline-flex items-center space-x-2 bg-blue-600/30 backdrop-blur-md px-4 py-2 rounded-full border border-blue-400/20 mb-8">
               <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">50 ans, 50 innovations pour les communes</span>
