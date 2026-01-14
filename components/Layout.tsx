@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { supabase } from '../lib/supabase';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,14 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNaviga
 
   const openGuideParticipation = () => {
     window.open("https://drive.google.com/file/d/1Omc4sAu6fPgWRfidcQ_nV8l_hQjRlCWO/view?usp=sharing", "_blank");
+  };
+
+  const handleLogout = () => {
+    // 1. Redirection immédiate (Systematique) pour UX instantanée
+    if (onNavigate) onNavigate('landing');
+    
+    // 2. Nettoyage de session en arrière-plan (Fire and Forget)
+    supabase.auth.signOut().catch(err => console.error("Erreur déconnexion:", err));
   };
 
   return (
@@ -85,6 +94,15 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNaviga
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Session</p>
                     <p className="text-xs font-black text-blue-900 uppercase tracking-tight">{userType === 'admin' ? 'Pilotage' : 'Candidat'}</p>
                   </div>
+                  <button 
+                    onClick={handleLogout}
+                    className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm group"
+                    title="Se déconnecter"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
                 </div>
               )}
             </div>
