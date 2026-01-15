@@ -16,6 +16,7 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    teamRequestProfile: '', // Nouveau champ
     region: REGIONS[0].name,
     theme: THEMES[0],
     secondaryTheme: THEMES[1]
@@ -50,6 +51,8 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
         .insert({
           name: formData.name,
           description: formData.description,
+          // MAPPAGE BDD : Nouvelle colonne TeamRequestProfile
+          TeamRequestProfile: formData.teamRequestProfile,
           leader_id: user.id,
           theme: formData.theme,
           secondary_theme: formData.secondaryTheme,
@@ -103,8 +106,18 @@ const CreateTeamPage: React.FC<CreateTeamPageProps> = ({ userProfile, onNavigate
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-gray-400 uppercase ml-1">Nom de l'innovation *</label>
                 <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full p-5 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Smart Municipality Djerba" />
+                
                 <label className="block text-[10px] font-black text-gray-400 uppercase ml-1">Impact Territorial *</label>
-                <textarea required rows={4} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-5 bg-slate-900 text-white rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Décrivez comment votre solution aide la commune..."></textarea>
+                <textarea required rows={3} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-5 bg-slate-900 text-white rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Décrivez comment votre solution aide la commune..."></textarea>
+                
+                <label className="block text-[10px] font-black text-gray-400 uppercase ml-1">Profils & Compétences Recherchés (TeamRequestProfile)</label>
+                <textarea 
+                  rows={3} 
+                  value={formData.teamRequestProfile} 
+                  onChange={(e) => setFormData({...formData, teamRequestProfile: e.target.value})} 
+                  className="w-full p-5 bg-gray-50 border border-gray-200 text-slate-900 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium" 
+                  placeholder="Décrivez les profils idéaux pour votre équipe (ex: Expert React, Urbaniste, Designer...)"
+                ></textarea>
               </div>
             </section>
             

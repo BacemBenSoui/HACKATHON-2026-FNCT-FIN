@@ -18,6 +18,9 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
   const [isLoading, setIsLoading] = useState(true);
   const [filterRegion, setFilterRegion] = useState('');
   const [filterTheme, setFilterTheme] = useState<ThemeType | ''>('');
+  
+  // État pour la modale de profil membre
+  const [selectedMemberProfile, setSelectedMemberProfile] = useState<any | null>(null);
 
   const isInTeam = !!userProfile?.currentTeamId;
   const isLeader = userProfile?.teamRole === 'leader';
@@ -30,7 +33,8 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
     setIsLoading(true);
     let query = supabase
       .from('teams')
-      .select(`*, team_members(role, profiles(first_name, last_name, tech_skills))`)
+      // MAPPAGE BDD : Ajout de email, phone, level dans la sélection des profils
+      .select(`*, team_members(role, profiles(id, first_name, last_name, university, level, email, phone, metier_skills, tech_skills, other_skills, cv_url))`)
       // MAPPAGE BDD : Filtrer sur Statut (text) = 'incomplete'
       .eq('Statut', 'incomplete');
 
@@ -38,7 +42,7 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
     if (filterTheme) query = query.eq('theme', filterTheme);
 
     const { data } = await query;
-    // On mappe Statut -> status pour le front si besoin, même si ici on ne l'utilise pas explicitement pour l'affichage
+    // On mappe Statut -> status pour le front si besoin
     const mappedData = data?.map(t => ({...t, status: t.Statut})) || [];
     setTeams(mappedData);
     setIsLoading(false);
@@ -113,28 +117,44 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
               teams.map(team => {
                 const members = team.team_members || [];
                 const hasApplied = userProfile?.applications?.includes(team.id);
-                // Utilisation de requested_skills: s'assurer qu'il existe ou default
-                const reqSkills = team.requested_skills || [];
+                // Utilisation de la nouvelle colonne TeamRequestProfile
+                const requestProfile = team.TeamRequestProfile || "";
                 
                 return (
                   <div key={team.id} className="bg-white border border-[#E0E0E0] rounded-[8px] p-10 shadow-sm hover:shadow-lg transition-all group">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                       <div className="lg:col-span-5 space-y-4">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-wrap items-center gap-2">
                            <span className="px-2 py-1 bg-blue-900 text-white text-[8px] font-black uppercase rounded">{team.preferred_region}</span>
+                           <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[8px] font-black uppercase rounded border border-indigo-100">{team.theme}</span>
                            <span className={`px-2 py-1 text-[8px] font-black uppercase rounded ${members.length === 5 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{members.length}/5 Membres</span>
                         </div>
                         <h3 className="text-3xl font-black text-blue-900 uppercase tracking-tighter leading-none group-hover:text-blue-600 transition-colors">{team.name}</h3>
                         <p className="text-gray-500 text-sm font-medium italic leading-relaxed line-clamp-3">"{team.description}"</p>
                       </div>
 
-                      <div className="lg:col-span-4 border-l border-gray-100 pl-10">
-                         <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2 mb-4">Profils Recherchés</p>
-                         <div className="flex flex-wrap gap-1">
-                            {/* Gestion de la colonne potentiellement manquante proprement */}
-                            {reqSkills.length > 0 ? reqSkills.map((s: string) => (
-                              <span key={s} className="px-2 py-1 bg-white text-blue-600 text-[8px] font-black uppercase rounded border border-[#E0E0E0]">{s}</span>
-                            )) : <span className="text-[8px] font-bold text-gray-300 italic">Ouvert à tout talent</span>}
+                      <div className="lg:col-span-4 border-l border-gray-100 pl-10 flex flex-col justify-between">
+                         <div className="mb-6">
+                            <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2 mb-3">Compétences Recherchées</p>
+                            <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                              {requestProfile ? requestProfile : <span className="text-gray-400 italic">Non spécifié par le chef d'équipe.</span>}
+                            </p>
+                         </div>
+                         
+                         <div>
+                            <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2 mb-3">Membres Actuels</p>
+                            <div className="flex flex-wrap gap-2">
+                               {members.map((m: any) => (
+                                 <button 
+                                   key={m.profiles?.id} 
+                                   onClick={() => setSelectedMemberProfile(m.profiles)}
+                                   className="px-3 py-1.5 bg-gray-50 hover:bg-blue-50 text-blue-800 rounded-lg text-[9px] font-bold uppercase border border-gray-200 hover:border-blue-200 transition-all flex items-center space-x-1"
+                                 >
+                                    <span>{m.profiles?.first_name} {m.profiles?.last_name}</span>
+                                    <svg className="w-3 h-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                 </button>
+                               ))}
+                            </div>
                          </div>
                       </div>
 
@@ -155,6 +175,69 @@ const FindTeamPage: React.FC<FindTeamPageProps> = ({ userProfile, setUserProfile
           </div>
         </div>
       </main>
+
+      {/* MODALE PROFIL MEMBRE */}
+      {selectedMemberProfile && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/40 backdrop-blur-sm">
+             <div className="relative bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                <button 
+                   onClick={() => setSelectedMemberProfile(null)}
+                   className="absolute top-4 right-4 z-10 w-8 h-8 bg-black/10 hover:bg-black/20 text-white rounded-full flex items-center justify-center transition-all"
+                >
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+
+                <div className="p-10 bg-blue-900 text-white flex items-center space-x-6">
+                   <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-2xl font-black uppercase border border-white/20">
+                      {selectedMemberProfile.first_name?.charAt(0)}
+                   </div>
+                   <div>
+                      <h4 className="text-xl font-black uppercase tracking-tight leading-none">{selectedMemberProfile.first_name} {selectedMemberProfile.last_name}</h4>
+                      <div className="mt-2">
+                        <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">{selectedMemberProfile.university}</p>
+                        {selectedMemberProfile.level && (
+                          <p className="text-[9px] font-medium text-blue-200 uppercase tracking-wide mt-0.5">{selectedMemberProfile.level}</p>
+                        )}
+                      </div>
+                   </div>
+                </div>
+                <div className="p-10 space-y-6">
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Coordonnées</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[8px] text-gray-400 uppercase font-bold mb-0.5">Email</p>
+                          <a href={`mailto:${selectedMemberProfile.email}`} className="text-[10px] font-black text-blue-600 hover:underline truncate block" title={selectedMemberProfile.email}>
+                            {selectedMemberProfile.email || 'Non renseigné'}
+                          </a>
+                        </div>
+                        <div>
+                          <p className="text-[8px] text-gray-400 uppercase font-bold mb-0.5">Téléphone</p>
+                          <a href={`tel:${selectedMemberProfile.phone}`} className="text-[10px] font-black text-blue-600 hover:underline">
+                            {selectedMemberProfile.phone || 'Non renseigné'}
+                          </a>
+                        </div>
+                      </div>
+                   </section>
+
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Expertises Déclarées</p>
+                      <div className="flex flex-wrap gap-1">
+                         {selectedMemberProfile.metier_skills?.map((s: string) => <span key={s} className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[8px] font-black uppercase rounded border border-emerald-100">{s}</span>)}
+                         {selectedMemberProfile.tech_skills?.map((s: string) => <span key={s} className="px-2 py-1 bg-blue-50 text-blue-700 text-[8px] font-black uppercase rounded border border-blue-100">{s}</span>)}
+                      </div>
+                   </section>
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Biographie / Atouts</p>
+                      <p className="text-xs text-gray-500 italic">"{selectedMemberProfile.other_skills || 'Aucune description fournie.'}"</p>
+                   </section>
+                </div>
+                <div className="bg-gray-50 p-6 flex justify-end border-t border-gray-100">
+                   <button onClick={() => setSelectedMemberProfile(null)} className="px-6 py-3 bg-gray-200 text-gray-600 rounded-xl text-[10px] font-black uppercase hover:bg-gray-300 transition-all">Fermer</button>
+                </div>
+             </div>
+          </div>
+        )}
     </Layout>
   );
 };

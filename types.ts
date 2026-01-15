@@ -51,6 +51,7 @@ export interface Team {
   pocUrl?: string;
   motivationUrl?: string;
   lettreMotivationUrl?: string; // Ajouté pour la règle de gestion 5
+  teamRequestProfile?: string; // Nouvelle colonne TeamRequestProfile
 }
 
 export interface JoinRequest {

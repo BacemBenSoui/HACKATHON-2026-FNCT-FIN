@@ -13,12 +13,16 @@ const Layout: React.FC<LayoutProps> = ({ children, userType = 'public', onNaviga
   const isInTeam = !!currentTeamId;
   const [showRules, setShowRules] = useState(false);
 
-  const handleLogout = () => {
-    // 1. Redirection immédiate (Systematique) pour UX instantanée
-    if (onNavigate) onNavigate('landing');
-    
-    // 2. Nettoyage de session en arrière-plan (Fire and Forget)
-    supabase.auth.signOut().catch(err => console.error("Erreur déconnexion:", err));
+  const handleLogout = async () => {
+    try {
+      // On attend la déconnexion Supabase (nettoyage local storage + appel API)
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Erreur déconnexion:", err);
+    } finally {
+      // Ensuite on navigue, assurant que l'état App.tsx aura reçu l'événement SIGNED_OUT
+      if (onNavigate) onNavigate('landing');
+    }
   };
 
   return (

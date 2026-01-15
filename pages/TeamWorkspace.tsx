@@ -4,7 +4,7 @@ import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
 import { Team, StudentProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { THEMES, TECH_SKILLS } from '../constants';
+import { THEMES } from '../constants';
 import { supabase } from '../lib/supabase';
 
 type WorkspaceTab = 'overview' | 'recruitment' | 'communication' | 'ai';
@@ -31,14 +31,14 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     description: team?.description || '',
-    requested_skills: team?.requestedSkills || []
+    teamRequestProfile: team?.teamRequestProfile || ''
   });
 
   useEffect(() => {
     if (team && !isEditing) {
       setEditData({
         description: team.description || '',
-        requested_skills: team.requestedSkills || []
+        teamRequestProfile: team.teamRequestProfile || ''
       });
     }
   }, [team, isEditing]);
@@ -98,13 +98,12 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
   const handleUpdateTeamInfo = async () => {
     if (!team?.id || !isLeader || isSubmitted) return;
     try {
-      // MAPPAGE BDD : Seul 'description' existe surement dans la table actuelle d'après les retours.
-      // 'requested_skills' semble absent du schéma fourni. On ne l'envoie pas pour éviter le crash.
+      // MAPPAGE BDD : Mise à jour de 'description' et 'TeamRequestProfile' (text)
       const { error } = await supabase
         .from('teams')
         .update({
-          description: editData.description
-          // requested_skills: editData.requested_skills // Désactivé car colonne absente du schéma
+          description: editData.description,
+          "TeamRequestProfile": editData.teamRequestProfile
         })
         .eq('id', team.id);
       
@@ -247,15 +246,14 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                        <textarea value={editData.description} onChange={(e) => setEditData({...editData, description: e.target.value})} className="w-full p-5 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium" rows={4} />
                     </div>
                     <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase mb-4">Profils recherchés (Compétences Tech/Métier)</label>
-                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {TECH_SKILLS.map(skill => (
-                            <button key={skill} onClick={() => setEditData({...editData, requested_skills: editData.requested_skills.includes(skill) ? editData.requested_skills.filter(s => s !== skill) : [...editData.requested_skills, skill]})} className={`p-2 rounded-lg text-[8px] font-black uppercase border transition-all ${editData.requested_skills.includes(skill) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-blue-200'}`}>
-                               {skill}
-                            </button>
-                          ))}
-                       </div>
-                       <p className="text-[9px] font-bold text-orange-500 mt-2">Note: La mise à jour des compétences requises est temporairement désactivée pour maintenance BDD.</p>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase mb-4">Profils recherchés & Compétences</label>
+                       <textarea 
+                          value={editData.teamRequestProfile} 
+                          onChange={(e) => setEditData({...editData, teamRequestProfile: e.target.value})}
+                          className="w-full p-5 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium" 
+                          rows={3} 
+                          placeholder="Décrivez les profils idéaux (ex: Dev Fullstack, Urbaniste, Vidéaste...)"
+                       />
                     </div>
                     <div className="pt-6 flex justify-end">
                        <button onClick={handleUpdateTeamInfo} className="px-10 py-4 bg-blue-900 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-blue-800 transition-all active:scale-95">Sauvegarder les modifications</button>
@@ -264,8 +262,9 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
               </section>
             ) : (
               <section className="bg-white rounded-[8px] border border-[#E0E0E0] shadow-sm overflow-hidden">
-                <div className="p-8 bg-gray-50 border-b">
+                <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
                    <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Composition Nominative</h3>
+                   {team.teamRequestProfile && <span className="text-[9px] text-blue-600 font-bold uppercase truncate max-w-xs" title={team.teamRequestProfile}>Recherche : {team.teamRequestProfile}</span>}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-5 divide-x divide-gray-100">
                    {team.members.map((m, i) => (
@@ -404,10 +403,33 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
                    </div>
                    <div>
                       <h4 className="text-xl font-black uppercase tracking-tight leading-none">{selectedMemberProfile.first_name} {selectedMemberProfile.last_name}</h4>
-                      <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest mt-2">{selectedMemberProfile.university}</p>
+                      <div className="mt-2">
+                        <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">{selectedMemberProfile.university}</p>
+                        {selectedMemberProfile.level && (
+                           <p className="text-[9px] font-medium text-blue-200 uppercase tracking-wide mt-0.5">{selectedMemberProfile.level}</p>
+                        )}
+                      </div>
                    </div>
                 </div>
                 <div className="p-10 space-y-6">
+                   <section>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Coordonnées</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[8px] text-gray-400 uppercase font-bold mb-0.5">Email</p>
+                          <a href={`mailto:${selectedMemberProfile.email}`} className="text-[10px] font-black text-blue-600 hover:underline truncate block" title={selectedMemberProfile.email}>
+                            {selectedMemberProfile.email || 'Non renseigné'}
+                          </a>
+                        </div>
+                        <div>
+                          <p className="text-[8px] text-gray-400 uppercase font-bold mb-0.5">Téléphone</p>
+                          <a href={`tel:${selectedMemberProfile.phone}`} className="text-[10px] font-black text-blue-600 hover:underline">
+                            {selectedMemberProfile.phone || 'Non renseigné'}
+                          </a>
+                        </div>
+                      </div>
+                   </section>
+
                    <section>
                       <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b pb-1">Expertises Déclarées</p>
                       <div className="flex flex-wrap gap-1">
@@ -428,7 +450,7 @@ const TeamWorkspace: React.FC<TeamWorkspaceProps> = ({ userProfile, team, setTea
           </div>
         )}
       </main>
-    </Layout>
+    </Layout> 
   );
 };
 
