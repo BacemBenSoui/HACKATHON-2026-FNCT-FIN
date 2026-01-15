@@ -5,7 +5,7 @@ export const REGIONS = [
   { id: 'sud-est', name: 'Sud-Est (Djerba)', date: '2026-04-03' },
   { id: 'centre-est', name: 'Centre-Est (Sfax)', date: '2026-04-06' },
   { id: 'centre-ouest', name: 'Centre-Ouest (Sousse)', date: '2026-04-08' },
-  { id: 'nord-ouest', name: 'Nord-Ouest (Tabarka)', date: '2026-04-15' },
+  { id: 'nord-ouest', name: 'Nord-Ouest (Bizerte)', date: '2026-04-15' },
   { id: 'nationale', name: 'Finale nationale (Tunis)', date: '2026-04-22' },
 ];
 

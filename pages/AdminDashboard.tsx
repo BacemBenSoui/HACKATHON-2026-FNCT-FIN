@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import DashboardHeader from '../components/DashboardHeader';
-import { STATUS_COLORS, STATUS_LABELS, REGIONS, THEMES, TECH_SKILLS } from '../constants';
+import { STATUS_COLORS, STATUS_LABELS, REGIONS, THEMES } from '../constants';
 import { supabase } from '../lib/supabase';
 
-type AdminTab = 'stats' | 'teams' | 'jury';
+type AdminTab = 'stats' | 'teams' | 'jury' | 'final-selection';
 
 interface EmailDraft {
   status: string;
@@ -21,8 +21,14 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
   const [profiles, setProfiles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // États pour la modale d'évaluation
+  // Filtres
+  const [filterText, setFilterText] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
+  const [filterStatus, setFilterStatus] = useState(''); // Nouveau filtre statut
+
+  // États pour la modale d'évaluation/consultation
   const [evaluatingTeam, setEvaluatingTeam] = useState<any | null>(null);
+  const [isViewOnly, setIsViewOnly] = useState(false); 
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [evaluationScores, setEvaluationScores] = useState<Record<string, number>>({});
   
@@ -40,7 +46,7 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
         .from('teams')
         .select(`
           *,
-          leader:profiles!leader_id(first_name, last_name, email),
+          leader:profiles!leader_id(first_name, last_name, email, phone),
           members:team_members(
             profile_id,
             role,
@@ -66,13 +72,23 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
     }
   };
 
+  const calculateScore = (team: any) => {
+    const baseScore = (team.members?.length / 5) * 40; 
+    const bonusSkill = (team.requested_skills?.length || 0) * 5;
+    const evalScore = evaluationScores[team.id] || 0;
+    return Math.min(Math.round(baseScore + bonusSkill + evalScore), 100);
+  };
+
   const stats = useMemo(() => {
     return {
       totalCandidates: profiles.length,
       totalTeams: teams.length,
+      incomplete: teams.filter(t => t.status === 'incomplete').length,
       submitted: teams.filter(t => t.status === 'submitted').length,
-      pending: teams.filter(t => t.status === 'incomplete' || t.status === 'complete').length,
+      waitlist: teams.filter(t => t.status === 'waitlist').length,
       accepted: teams.filter(t => t.status === 'selected').length,
+      rejected: teams.filter(t => t.status === 'rejected').length,
+      finalAccepted: teams.filter(t => t.status === 'final_accepted').length,
     };
   }, [teams, profiles]);
 
@@ -93,54 +109,104 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
     return matrix;
   }, [teams]);
 
-  const expertiseStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-    profiles.forEach(p => {
-      (p.tech_skills || []).forEach((s: string) => {
-        counts[s] = (counts[s] || 0) + 1;
-      });
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [profiles]);
+  // Calcul des stats régionales pour le volet latéral (Inclut la sélection finale)
+  const regionalStats = useMemo(() => {
+    return REGIONS.map(r => {
+      const regionTeams = teams.filter(t => t.preferred_region === r.name);
+      
+      // Validés par le Jury (selected) OU Acceptés définitivement OU Liste d'attente finale
+      const juryValidatedCount = regionTeams.filter(t => ['selected', 'final_accepted', 'final_waitlist'].includes(t.status)).length;
+      
+      // Acceptés définitivement (Final)
+      const finalAcceptedCount = regionTeams.filter(t => t.status === 'final_accepted').length;
 
-  const calculateScore = (team: any) => {
-    const baseScore = (team.members?.length / 5) * 40; 
-    const bonusSkill = (team.requested_skills?.length || 0) * 5;
-    const evalScore = evaluationScores[team.id] || 0;
-    return Math.min(Math.round(baseScore + bonusSkill + evalScore), 100);
+      const totalRegionTeams = regionTeams.length;
+      const validationRate = totalRegionTeams > 0 ? Math.round((juryValidatedCount / totalRegionTeams) * 100) : 0;
+      const candidateCount = regionTeams.reduce((acc, t) => acc + (t.members?.length || 0), 0);
+
+      return {
+        name: r.name,
+        juryValidated: juryValidatedCount,
+        finalAccepted: finalAcceptedCount, // Pour le baromètre / 10
+        total: totalRegionTeams,
+        rate: validationRate,
+        candidates: candidateCount
+      };
+    });
+  }, [teams]);
+
+  const getRowColorClass = (status: string) => {
+    switch(status) {
+      case 'incomplete': return 'bg-red-50/70 hover:bg-red-100/80 border-l-4 border-red-500';
+      case 'submitted': return 'bg-orange-50/70 hover:bg-orange-100/80 border-l-4 border-orange-500';
+      case 'waitlist': return 'bg-yellow-50/70 hover:bg-yellow-100/80 border-l-4 border-yellow-500';
+      case 'selected': return 'bg-emerald-50/70 hover:bg-emerald-100/80 border-l-4 border-emerald-500'; // Validé Jury
+      case 'final_accepted': return 'bg-blue-100 hover:bg-blue-200 border-l-4 border-blue-900'; // Accepté Hackathon
+      case 'final_waitlist': return 'bg-yellow-100 hover:bg-yellow-200 border-l-4 border-yellow-600'; // Liste attente Hackathon
+      default: return 'bg-white hover:bg-gray-50 border-l-4 border-gray-200';
+    }
   };
+
+  // Filtrage global des équipes
+  const filteredTeams = useMemo(() => {
+    return teams.filter(t => {
+      const matchesText = t.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                          t.leader?.last_name?.toLowerCase().includes(filterText.toLowerCase());
+      const matchesRegion = filterRegion ? t.preferred_region === filterRegion : true;
+      const matchesStatus = filterStatus ? t.status === filterStatus : true;
+      
+      return matchesText && matchesRegion && matchesStatus;
+    });
+  }, [teams, filterText, filterRegion, filterStatus]);
+
 
   // Préparation de l'email avant ouverture modale
   const handleDecisionClick = (team: any, status: string) => {
-    // Récupération des emails (Chef + Membres)
     const recipients = [
       team.leader?.email,
       ...team.members.map((m: any) => m.profiles?.email)
-    ].filter(Boolean).join(', '); // Note: Pour mailto, souvent ';' ou ',' selon le client. ',' est standard web.
+    ].filter(Boolean).join(', ');
 
     const leaderName = `${team.leader?.first_name || 'Chef'} ${team.leader?.last_name || 'de Projet'}`;
     let subject = "";
-    let decisionText = "";
+    let body = "";
 
-    switch (status) {
-      case 'selected':
+    // Logique pour l'email de SÉLECTION DÉFINITIVE (Goal 2)
+    if (status === 'final_accepted') {
+        const regionData = REGIONS.find(r => r.name === team.preferred_region);
+        const regionName = regionData ? regionData.name : team.preferred_region;
+        // On récupère la date depuis constants (ex: 2026-04-15) et on la formate
+        const dateHackathon = regionData ? new Date(regionData.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : "Date à confirmer";
+
+        subject = `Félicitation vous êtes invités à participer au Hackathon 2006 oragnisé par la FNCT à ${regionName}`;
+        
+        body = `La FNCT a l'honneur de vous conviez à participer au Hackathon 'Innovation Communale 2026' à ${regionName}.
+Nous seront ravie de vous avoir parmi nous le ${dateHackathon}.
+Nous vous prions de bien vouloir confirmer votre pésence 10 jours à l'avance.
+
+Cordialement 
+Equipe FNCT
+Fédération Nationale des Communes Tunisiennes 
+
+Tel : 71 848 393 –| Fax : 71 844 847
+Mobile : (+216) 58 400 194
+Site Web : www.fnct.tn
+Adresse : 76 rue de Syrie - 1002 Lafayette Tunis`;
+    } 
+    // Logique pour l'email de validation JURY (Goal 3 updated)
+    else if (status === 'selected') {
         subject = `Félicitations ! Acceptation de votre dossier FNCT - ${team.name}`;
-        decisionText = "ACCEPTER";
-        break;
-      case 'rejected':
-        subject = `Mise à jour concernant votre candidature FNCT - ${team.name}`;
-        decisionText = "REFUSER";
-        break;
-      case 'waitlist':
-        subject = `Votre dossier FNCT en liste d'attente - ${team.name}`;
-        decisionText = "METTRE EN ATTENTE";
-        break;
-      default:
-        subject = `Information Hackathon FNCT - ${team.name}`;
-        decisionText = "TRAITER";
+        body = `Bonjour ${leaderName} et l'équipe,\n\nSuite à la soumission de votre dossier de candidature au hackathon FNCT 2026, les membres du jury ont décidé d'ACCEPTER votre dossier.\n\nNous vous confirmerons en cas de sélection définitive , votre participation au Hackathon 2026.\n\nCordialement,\nLe Jury FNCT 2026`;
     }
+    // Autres statuts
+    else {
+        let decisionText = "TRAITER";
+        if (status === 'rejected') decisionText = "REFUSER";
+        if (status === 'waitlist' || status === 'final_waitlist') decisionText = "METTRE EN ATTENTE";
 
-    const body = `Bonjour ${leaderName} et l'équipe,\n\nSuite à la soumission de votre dossier de candidature au hackathon FNCT 2026, les membres du jury ont décidé de ${decisionText} votre dossier.\n\nNous restons à votre disposition pour tout complément d'information.\n\nCordialement,\nLe Jury FNCT 2026`;
+        subject = `Mise à jour concernant votre candidature FNCT - ${team.name}`;
+        body = `Bonjour ${leaderName} et l'équipe,\n\nSuite à l'évaluation de votre dossier, nous avons décidé de ${decisionText} votre candidature pour le moment.\n\nCordialement,\nLe Jury FNCT 2026`;
+    }
 
     setEmailDraft({
       teamId: team.id,
@@ -154,7 +220,18 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
   const handleSendEmailAndSave = async () => {
     if (!emailDraft) return;
 
-    // 1. Mise à jour Base de Données
+    // Règle des 10 équipes pour la sélection définitive
+    if (emailDraft.status === 'final_accepted') {
+       const teamToUpdate = teams.find(t => t.id === emailDraft.teamId);
+       if (teamToUpdate) {
+          const regionStats = regionalStats.find(r => r.name === teamToUpdate.preferred_region);
+          if (regionStats && regionStats.finalAccepted >= 10) {
+             alert(`Quota atteint pour ${teamToUpdate.preferred_region} ! (10 équipes maximum). Impossible d'accepter cette équipe.`);
+             return;
+          }
+       }
+    }
+
     const { error } = await supabase.from('teams').update({ Statut: emailDraft.status }).eq('id', emailDraft.teamId);
     
     if (error) {
@@ -163,38 +240,39 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
        return;
     }
 
-    // 2. Ouverture Client Mail
     const mailtoLink = `mailto:?bcc=${encodeURIComponent(emailDraft.to)}&subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
     window.location.href = mailtoLink;
 
-    // 3. Fermeture et Rafraîchissement
     setEmailDraft(null);
     setEvaluatingTeam(null);
     await fetchAdminData();
     alert("Statut mis à jour et client mail ouvert.");
   };
 
-  const handleExportCSV = () => {
+  const generateCSV = (data: any[], filename: string) => {
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + data.map(e => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportGlobal = () => {
     const headers = [
       "ID Candidat", "Prénom", "Nom", "Email", "Téléphone", "Université", "Niveau", "Genre",
       "Compétences Techniques", "Compétences Métier",
       "Nom Équipe", "ID Équipe", "Région", "Thème", "Statut Dossier", "Rôle dans l'équipe"
     ];
-
-    const rows = profiles.map(profile => {
+    
+    const rows = [headers, ...profiles.map(profile => {
       const associatedTeam = teams.find(t => 
         t.members.some((m: any) => m.profile_id === profile.id)
       );
 
-      let teamInfo = {
-        name: "Sans équipe",
-        id: "",
-        region: "",
-        theme: "",
-        status: "",
-        role: "Aucun"
-      };
-
+      let teamInfo = { name: "Sans équipe", id: "", region: "", theme: "", status: "", role: "Aucun" };
       if (associatedTeam) {
         const memberRecord = associatedTeam.members.find((m: any) => m.profile_id === profile.id);
         teamInfo = {
@@ -206,37 +284,59 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
           role: memberRecord?.role === 'leader' ? "Chef de Projet" : "Membre Expert"
         };
       }
-
       const clean = (text: string) => `"${(text || '').toString().replace(/"/g, '""')}"`;
-
       return [
-        clean(profile.id),
-        clean(profile.first_name),
-        clean(profile.last_name),
-        clean(profile.email),
-        clean(profile.phone),
-        clean(profile.university),
-        clean(profile.level),
-        clean(profile.gender),
-        clean((profile.tech_skills || []).join(', ')),
-        clean((profile.metier_skills || []).join(', ')),
-        clean(teamInfo.name),
-        clean(teamInfo.id),
-        clean(teamInfo.region),
-        clean(teamInfo.theme),
-        clean(teamInfo.status),
-        clean(teamInfo.role)
-      ].join(',');
-    });
+        clean(profile.id), clean(profile.first_name), clean(profile.last_name), clean(profile.email), clean(profile.phone),
+        clean(profile.university), clean(profile.level), clean(profile.gender),
+        clean((profile.tech_skills || []).join(', ')), clean((profile.metier_skills || []).join(', ')),
+        clean(teamInfo.name), clean(teamInfo.id), clean(teamInfo.region), clean(teamInfo.theme), clean(teamInfo.status), clean(teamInfo.role)
+      ];
+    })];
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `FNCT2026_Export_Global_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    generateCSV(rows, `FNCT2026_Export_Global_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const handleExportFinalSelection = () => {
+    // Filtre uniquement les équipes acceptées définitivement
+    const selectedTeams = teams.filter(t => t.status === 'final_accepted');
+    
+    if (selectedTeams.length === 0) {
+        alert("Aucune équipe n'est encore sélectionnée définitivement.");
+        return;
+    }
+
+    const headers = [
+        "ID Équipe", "Nom Équipe", "Région", "Thème", "Score", 
+        "Chef Projet Nom", "Chef Projet Email", "Chef Projet Tel",
+        "Membre 2", "Membre 2 Email", "Membre 2 Tel",
+        "Membre 3", "Membre 3 Email", "Membre 3 Tel",
+        "Membre 4", "Membre 4 Email", "Membre 4 Tel",
+        "Membre 5", "Membre 5 Email", "Membre 5 Tel"
+    ];
+
+    const rows = [headers, ...selectedTeams.map(t => {
+        const clean = (text: string) => `"${(text || '').toString().replace(/"/g, '""')}"`;
+        const members = t.members || [];
+        
+        // On assure que le leader est en premier ou on le traite à part, ici on prend juste les 5 membres
+        const membersData = [];
+        for (let i = 0; i < 5; i++) {
+            if (members[i]) {
+                membersData.push(clean(`${members[i].profiles?.first_name} ${members[i].profiles?.last_name}`));
+                membersData.push(clean(members[i].profiles?.email));
+                membersData.push(clean(members[i].profiles?.phone));
+            } else {
+                membersData.push("", "", "");
+            }
+        }
+
+        return [
+            clean(t.id), clean(t.name), clean(t.preferred_region), clean(t.theme), clean(calculateScore(t).toString()),
+            ...membersData
+        ];
+    })];
+
+    generateCSV(rows, `FNCT2026_Selection_Definitive_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   if (isLoading) return (
@@ -254,37 +354,43 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
         title="Centre de Pilotage FNCT 2026" 
         subtitle="Saison Innovation Territoriale - 50 ans de la Fédération."
         actions={
-          <button 
-            onClick={handleExportCSV}
-            className="flex items-center space-x-2 px-5 py-3 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95"
-            title="Télécharger la base de données complète"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Export Excel (.csv)</span>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleExportFinalSelection}
+              className="flex items-center space-x-2 px-5 py-3 bg-blue-900 text-white rounded-xl shadow-lg hover:bg-blue-800 transition-all active:scale-95"
+              title="Télécharger la liste des équipes acceptées au hackathon"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Export Sélection Finale</span>
+            </button>
+            <button 
+              onClick={handleExportGlobal}
+              className="flex items-center space-x-2 px-5 py-3 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95"
+              title="Télécharger la base de données complète"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Export Global</span>
+            </button>
+          </div>
         }
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
-        <div className="flex space-x-2 bg-gray-100 p-2 rounded-[2rem] w-fit">
-          <button 
-            onClick={() => setActiveTab('stats')}
-            className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'stats' ? 'bg-white text-blue-900 shadow-xl' : 'text-gray-400 hover:text-blue-900'}`}
-          >
-            Vue d'Ensemble
-          </button>
-          <button 
-            onClick={() => setActiveTab('teams')}
-            className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'teams' ? 'bg-white text-blue-900 shadow-xl' : 'text-gray-400 hover:text-blue-900'}`}
-          >
-            Gestion des Équipes
-          </button>
-          <button 
-            onClick={() => setActiveTab('jury')}
-            className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'jury' ? 'bg-white text-blue-900 shadow-xl' : 'text-gray-400 hover:text-blue-900'}`}
-          >
-            Jury & Évaluation
-          </button>
+        <div className="flex space-x-2 bg-gray-100 p-2 rounded-[2rem] w-fit flex-wrap">
+          {[
+            { id: 'stats', label: "Vue d'Ensemble" },
+            { id: 'teams', label: "Gestion des Équipes" },
+            { id: 'jury', label: "Jury & Évaluation" },
+            { id: 'final-selection', label: "Sélection Définitive" } // Nouvel Onglet
+          ].map((tab) => (
+             <button 
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.id as AdminTab); setFilterText(''); setFilterRegion(''); setFilterStatus(''); }}
+              className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-white text-blue-900 shadow-xl' : 'text-gray-400 hover:text-blue-900'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === 'stats' && (
@@ -294,8 +400,8 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
                 { label: "Candidats", val: stats.totalCandidates, color: "text-blue-600" },
                 { label: "Équipes", val: stats.totalTeams, color: "text-blue-900" },
                 { label: "Soumis", val: stats.submitted, color: "text-emerald-600" },
-                { label: "En Attente", val: stats.pending, color: "text-orange-500" },
-                { label: "Acceptés", val: stats.accepted, color: "text-blue-900" }
+                { label: "En Attente", val: stats.waitlist, color: "text-orange-500" },
+                { label: "Acceptés (Jury)", val: stats.accepted, color: "text-blue-900" }
               ].map((s, i) => (
                 <div key={i} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
                   <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-widest">{s.label}</p>
@@ -340,122 +446,342 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
         )}
 
         {activeTab === 'teams' && (
-          <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4">
-             <table className="w-full text-left">
-               <thead className="bg-gray-50 border-b">
-                 <tr className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                   <th className="px-10 py-6">Équipe & Pôle</th>
-                   <th className="px-10 py-6">Effectif</th>
-                   <th className="px-10 py-6">Thématiques (P | S)</th>
-                   <th className="px-10 py-6">État Dossier</th>
-                   <th className="px-10 py-6 text-right">Actions</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-100">
-                  {teams.map(team => (
-                    <tr key={team.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="px-10 py-6">
-                        <p className="text-xs font-black text-blue-900 uppercase leading-none">{team.name}</p>
-                        <p className="text-[8px] font-bold text-gray-400 uppercase mt-1 tracking-tighter">{team.preferred_region}</p>
-                      </td>
-                      <td className="px-10 py-6">
-                         <div className="flex items-center space-x-2">
-                            <span className={`text-xs font-black ${team.members?.length === 5 ? 'text-emerald-600' : 'text-blue-900'}`}>{team.members?.length}/5</span>
-                            <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                               <div className="h-full bg-blue-600" style={{ width: `${(team.members?.length / 5) * 100}%` }}></div>
-                            </div>
-                         </div>
-                      </td>
-                      <td className="px-10 py-6 max-w-xs">
-                         <div className="space-y-1">
-                            <p className="text-[9px] font-black text-blue-900 uppercase truncate">P: {team.theme}</p>
-                            <p className="text-[9px] font-bold text-emerald-600 uppercase truncate">S: {team.secondary_theme || 'N/A'}</p>
-                         </div>
-                      </td>
-                      <td className="px-10 py-6">
-                         <span className={`px-4 py-1.5 text-[9px] font-black uppercase rounded-full border ${STATUS_COLORS[team.status]}`}>
-                            {STATUS_LABELS[team.status]}
-                         </span>
-                      </td>
-                      <td className="px-10 py-6 text-right">
-                         <button onClick={() => setEvaluatingTeam(team)} className="px-4 py-2 bg-blue-900 text-white text-[9px] font-black uppercase rounded-xl hover:bg-blue-800 transition-all">Consulter</button>
-                      </td>
-                    </tr>
-                  ))}
-               </tbody>
-             </table>
-          </div>
-        )}
-
-        {activeTab === 'jury' && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-             <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
-                <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-8 border-b pb-4">Top Expertises présentes sur la plateforme</h3>
-                <div className="flex flex-wrap gap-4">
-                   {expertiseStats.slice(0, 8).map(([skill, count]) => (
-                     <div key={skill} className="flex items-center space-x-3 bg-gray-50 px-5 py-3 rounded-2xl border border-gray-100">
-                        <span className="text-[10px] font-black text-blue-900 uppercase">{skill}</span>
-                        <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-[10px] font-black">{count as any}</span>
-                     </div>
-                   ))}
-                </div>
+          <div className="space-y-6">
+             <div className="flex flex-col sm:flex-row gap-4 bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+                <input 
+                  type="text" 
+                  placeholder="Rechercher par nom d'équipe ou chef de projet..." 
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  className="flex-grow p-4 bg-gray-50 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                />
+                <select 
+                  value={filterRegion} 
+                  onChange={(e) => setFilterRegion(e.target.value)}
+                  className="p-4 bg-gray-50 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-200 uppercase"
+                >
+                   <option value="">Toutes Régions</option>
+                   {REGIONS.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                </select>
              </div>
 
-             <div className="bg-white rounded-[3.5rem] border border-gray-100 shadow-xl overflow-hidden">
-                <table className="w-full text-left">
-                   <thead className="bg-blue-900 text-white">
-                      <tr className="text-[10px] font-black uppercase tracking-widest">
-                         <th className="px-10 py-6">Innovation Projet</th>
-                         <th className="px-10 py-6">Pôle</th>
-                         <th className="px-10 py-6">Effectif</th>
-                         <th className="px-10 py-6 text-center">Score Global</th>
-                         <th className="px-10 py-6">Statut</th>
-                         <th className="px-10 py-6 text-right">Évaluation</th>
-                      </tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-100">
-                      {teams.filter(t => t.status === 'submitted' || t.status === 'selected').map(team => (
-                        <tr key={team.id} className="hover:bg-blue-50/50 transition-colors">
-                           <td className="px-10 py-7">
-                              <p className="text-sm font-black text-blue-900 uppercase tracking-tighter leading-none">{team.name}</p>
-                              <p className="text-[8px] font-bold text-gray-400 uppercase mt-2">{team.theme}</p>
-                           </td>
-                           <td className="px-10 py-7 text-[10px] font-black text-gray-500 uppercase">{team.preferred_region}</td>
-                           <td className="px-10 py-7">
-                              <span className="px-3 py-1 bg-blue-50 text-blue-900 text-[10px] font-black rounded-lg">{team.members?.length}/5</span>
-                           </td>
-                           <td className="px-10 py-7 text-center">
-                              <p className="text-xl font-black text-blue-600 leading-none">{calculateScore(team)}</p>
-                              <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">/ 100</p>
-                           </td>
-                           <td className="px-10 py-7">
-                              <span className={`px-4 py-1.5 text-[9px] font-black uppercase rounded-full border ${STATUS_COLORS[team.status]}`}>
-                                {STATUS_LABELS[team.status]}
-                              </span>
-                           </td>
-                           <td className="px-10 py-7 text-right">
-                              <button 
-                                onClick={() => setEvaluatingTeam(team)}
-                                className="px-8 py-3 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all"
-                              >
-                                Évaluer
-                              </button>
-                           </td>
+             <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-gray-50 border-b">
+                    <tr className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                      <th className="px-10 py-6">Équipe & Pôle</th>
+                      <th className="px-10 py-6">Effectif</th>
+                      <th className="px-10 py-6">Thématiques (P | S)</th>
+                      <th className="px-10 py-6">État Dossier</th>
+                      <th className="px-10 py-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                      {filteredTeams.map(team => (
+                        <tr key={team.id} className={`transition-all ${getRowColorClass(team.status)}`}>
+                          <td className="px-10 py-6">
+                            <p className="text-xs font-black text-blue-900 uppercase leading-none">{team.name}</p>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase mt-1 tracking-tighter">{team.preferred_region}</p>
+                          </td>
+                          <td className="px-10 py-6">
+                            <div className="flex items-center space-x-2">
+                                <span className={`text-xs font-black ${team.members?.length === 5 ? 'text-emerald-600' : 'text-blue-900'}`}>{team.members?.length}/5</span>
+                                <div className="w-20 h-1.5 bg-gray-100/50 rounded-full overflow-hidden">
+                                  <div className="h-full bg-blue-600" style={{ width: `${(team.members?.length / 5) * 100}%` }}></div>
+                                </div>
+                            </div>
+                          </td>
+                          <td className="px-10 py-6 max-w-xs">
+                            <div className="space-y-1">
+                                <p className="text-[9px] font-black text-blue-900 uppercase truncate">P: {team.theme}</p>
+                                <p className="text-[9px] font-bold text-gray-500 uppercase truncate">S: {team.secondary_theme || 'N/A'}</p>
+                            </div>
+                          </td>
+                          <td className="px-10 py-6">
+                            <span className={`px-4 py-1.5 text-[9px] font-black uppercase rounded-full border bg-white/50 border-gray-200`}>
+                                {STATUS_LABELS[team.status] || team.status}
+                            </span>
+                          </td>
+                          <td className="px-10 py-6 text-right">
+                            <button 
+                              onClick={() => { setEvaluatingTeam(team); setIsViewOnly(true); }} 
+                              className="px-4 py-2 bg-white text-blue-900 border border-blue-900 text-[9px] font-black uppercase rounded-xl hover:bg-blue-900 hover:text-white transition-all shadow-sm"
+                            >
+                              Consulter
+                            </button>
+                          </td>
                         </tr>
                       ))}
-                   </tbody>
+                  </tbody>
                 </table>
              </div>
           </div>
         )}
 
-        {/* MODALE D'ÉVALUATION DU DOSSIER */}
+        {activeTab === 'jury' && (
+          <div className="animate-in fade-in duration-500">
+             
+             {/* JURY : STATS HEADER */}
+             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+               <div className="bg-blue-900 p-6 rounded-2xl text-white shadow-lg">
+                  <p className="text-[8px] font-black uppercase opacity-60 mb-1">Candidats Total</p>
+                  <p className="text-2xl font-black">{stats.totalCandidates}</p>
+               </div>
+               <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-[8px] font-black uppercase text-gray-400 mb-1">Équipes Constituées</p>
+                  <p className="text-2xl font-black text-blue-900">{stats.totalTeams}</p>
+               </div>
+               <div className="bg-red-50 p-6 rounded-2xl border border-red-100 shadow-sm">
+                  <p className="text-[8px] font-black uppercase text-red-400 mb-1">Brouillons</p>
+                  <p className="text-2xl font-black text-red-600">{stats.incomplete}</p>
+               </div>
+               <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 shadow-sm">
+                  <p className="text-[8px] font-black uppercase text-orange-400 mb-1">Soumis (À Traiter)</p>
+                  <p className="text-2xl font-black text-orange-600">{stats.submitted}</p>
+               </div>
+               <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm">
+                  <p className="text-[8px] font-black uppercase text-emerald-400 mb-1">Validés (Finale)</p>
+                  <p className="text-2xl font-black text-emerald-600">{stats.accepted}</p>
+               </div>
+             </div>
+
+             <div className="flex flex-col lg:flex-row gap-8">
+                {/* TABLEAU CENTRAL */}
+                <div className="flex-grow space-y-6">
+                   {/* Filtres Jury */}
+                   <div className="flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                      <input 
+                        type="text" 
+                        placeholder="Filtrer les dossiers..." 
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        className="flex-grow p-3 bg-gray-50 rounded-xl text-xs font-bold outline-none"
+                      />
+                      <select 
+                        value={filterRegion} 
+                        onChange={(e) => setFilterRegion(e.target.value)}
+                        className="p-3 bg-gray-50 rounded-xl text-xs font-bold outline-none uppercase"
+                      >
+                         <option value="">Toutes Régions</option>
+                         {REGIONS.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                      </select>
+                      {/* AJOUT FILTRE STATUT (Goal 1) */}
+                      <select 
+                        value={filterStatus} 
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="p-3 bg-gray-50 rounded-xl text-xs font-bold outline-none uppercase"
+                      >
+                         <option value="">Tous Statuts</option>
+                         {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                             <option key={key} value={key}>{label}</option>
+                         ))}
+                      </select>
+                   </div>
+
+                   <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden">
+                      <table className="w-full text-left">
+                         <thead className="bg-blue-900 text-white">
+                            <tr className="text-[9px] font-black uppercase tracking-widest">
+                               <th className="px-8 py-5">Innovation Projet</th>
+                               <th className="px-8 py-5">Pôle</th>
+                               <th className="px-8 py-5 text-center">Score</th>
+                               <th className="px-8 py-5">Statut</th>
+                               <th className="px-8 py-5 text-right">Évaluation</th>
+                            </tr>
+                         </thead>
+                         <tbody>
+                            {filteredTeams.map(team => (
+                              <tr key={team.id} className={`transition-all ${getRowColorClass(team.status)}`}>
+                                 <td className="px-8 py-5">
+                                    <p className="text-xs font-black text-blue-900 uppercase tracking-tighter leading-none">{team.name}</p>
+                                    <p className="text-[8px] font-bold text-gray-500 uppercase mt-1">{team.theme}</p>
+                                 </td>
+                                 <td className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase">{team.preferred_region}</td>
+                                 <td className="px-8 py-5 text-center">
+                                    <p className="text-lg font-black text-blue-600 leading-none">{calculateScore(team)}</p>
+                                 </td>
+                                 <td className="px-8 py-5">
+                                    <span className="px-3 py-1 text-[8px] font-black uppercase rounded-full bg-white/80 border border-black/5">
+                                      {STATUS_LABELS[team.status] || team.status}
+                                    </span>
+                                 </td>
+                                 <td className="px-8 py-5 text-right">
+                                    <button 
+                                      onClick={() => { setEvaluatingTeam(team); setIsViewOnly(false); }}
+                                      className="px-6 py-2 bg-blue-600 text-white text-[9px] font-black uppercase rounded-xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all"
+                                    >
+                                      Noter
+                                    </button>
+                                 </td>
+                              </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+                </div>
+
+                {/* SIDEBAR REGIONALE */}
+                <div className="w-full lg:w-80 flex-shrink-0 space-y-6">
+                   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg sticky top-6">
+                      <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-4 mb-4">Performance Régionale</h4>
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                         {regionalStats.map((stat, i) => (
+                           <div key={i} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:border-blue-200 transition-all">
+                              <div className="flex justify-between items-center mb-2">
+                                 <span className="text-[9px] font-black text-blue-900 uppercase">{stat.name}</span>
+                                 <span className="text-[8px] font-bold text-gray-400 uppercase">{stat.total} Équipes</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                 <div className="bg-emerald-100 rounded-lg p-2">
+                                    <p className="text-[10px] font-black text-emerald-700">{stat.juryValidated}</p>
+                                    <p className="text-[6px] font-bold text-emerald-500 uppercase">Validés</p>
+                                 </div>
+                                 <div className="bg-blue-100 rounded-lg p-2">
+                                    <p className="text-[10px] font-black text-blue-700">{stat.rate}%</p>
+                                    <p className="text-[6px] font-bold text-blue-500 uppercase">Taux</p>
+                                 </div>
+                                 <div className="bg-indigo-100 rounded-lg p-2">
+                                    <p className="text-[10px] font-black text-indigo-700">{stat.candidates}</p>
+                                    <p className="text-[6px] font-bold text-indigo-500 uppercase">Talents</p>
+                                 </div>
+                              </div>
+                           </div>
+                         ))}
+                      </div>
+                   </div>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* NOUVEL ONGLET : SÉLECTION DÉFINITIVE (Goal 2) */}
+        {activeTab === 'final-selection' && (
+            <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in">
+               <div className="flex-grow space-y-12">
+                  <div className="bg-blue-50 border-l-4 border-blue-900 p-6 rounded-r-2xl">
+                     <h3 className="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Phase Finale : Confirmation Hackathon</h3>
+                     <p className="text-[10px] text-blue-700/80">
+                        Sélectionnez jusqu'à <strong>10 équipes par région</strong>. Les équipes non retenues passeront automatiquement en liste d'attente.
+                        Un email d'invitation officiel sera envoyé lors de la confirmation.
+                     </p>
+                  </div>
+
+                  {REGIONS.map(region => {
+                      const regionTeams = teams.filter(t => 
+                          t.preferred_region === region.name && 
+                          ['selected', 'final_accepted', 'final_waitlist'].includes(t.status)
+                      ).sort((a, b) => calculateScore(b) - calculateScore(a)); // Tri par score décroissant
+
+                      if (regionTeams.length === 0) return null;
+
+                      const acceptedCount = regionTeams.filter(t => t.status === 'final_accepted').length;
+
+                      return (
+                          <div key={region.id} className="space-y-4">
+                              <div className="flex justify-between items-center px-4">
+                                  <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">{region.name}</h4>
+                                  <span className={`text-[10px] font-black px-3 py-1 rounded-full ${acceptedCount >= 10 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                      {acceptedCount} / 10 Qualifiés
+                                  </span>
+                              </div>
+                              <div className="bg-white rounded-[2rem] border border-gray-100 shadow-md overflow-hidden">
+                                  <table className="w-full text-left">
+                                      <thead className="bg-gray-50 border-b">
+                                          <tr className="text-[8px] font-black text-gray-400 uppercase tracking-widest">
+                                              <th className="px-6 py-4">Rang</th>
+                                              <th className="px-6 py-4">Projet</th>
+                                              <th className="px-6 py-4 text-center">Score</th>
+                                              <th className="px-6 py-4">Statut Actuel</th>
+                                              <th className="px-6 py-4 text-right">Décision Finale</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          {regionTeams.map((team, index) => (
+                                              <tr key={team.id} className={`hover:bg-gray-50 transition-colors border-b last:border-0 ${team.status === 'final_accepted' ? 'bg-blue-50/30' : ''}`}>
+                                                  <td className="px-6 py-4">
+                                                      <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-black text-gray-500">#{index + 1}</span>
+                                                  </td>
+                                                  <td className="px-6 py-4">
+                                                      <p className="text-[11px] font-black text-blue-900 uppercase">{team.name}</p>
+                                                      <p className="text-[8px] text-gray-400 font-bold uppercase">{team.theme}</p>
+                                                  </td>
+                                                  <td className="px-6 py-4 text-center">
+                                                      <span className="text-sm font-black text-blue-600">{calculateScore(team)}</span>
+                                                  </td>
+                                                  <td className="px-6 py-4">
+                                                      <span className={`px-2 py-1 text-[8px] font-black uppercase rounded border ${
+                                                          team.status === 'final_accepted' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                                          team.status === 'final_waitlist' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                                          'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                                      }`}>
+                                                          {team.status === 'selected' ? 'Pré-sélectionné' : STATUS_LABELS[team.status]}
+                                                      </span>
+                                                  </td>
+                                                  <td className="px-6 py-4 text-right space-x-2">
+                                                      {team.status !== 'final_accepted' && (
+                                                          <button 
+                                                              onClick={() => handleDecisionClick(team, 'final_accepted')}
+                                                              className="px-3 py-1.5 bg-blue-900 text-white text-[8px] font-black uppercase rounded-lg hover:bg-blue-800 shadow-md transition-all"
+                                                          >
+                                                              Confirmer
+                                                          </button>
+                                                      )}
+                                                      {team.status !== 'final_waitlist' && (
+                                                          <button 
+                                                              onClick={() => handleDecisionClick(team, 'final_waitlist')}
+                                                              className="px-3 py-1.5 bg-white border border-yellow-300 text-yellow-600 text-[8px] font-black uppercase rounded-lg hover:bg-yellow-50 transition-all"
+                                                          >
+                                                              Attente
+                                                          </button>
+                                                      )}
+                                                  </td>
+                                              </tr>
+                                          ))}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      );
+                  })}
+               </div>
+
+               {/* SIDEBAR BAROMETRE (Goal 2 - Droite) */}
+               <div className="w-full lg:w-72 flex-shrink-0">
+                  <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg sticky top-6 space-y-6">
+                      <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-4">Baromètre Sélection</h4>
+                      {regionalStats.map((stat, i) => (
+                          <div key={i} className="space-y-2">
+                              <div className="flex justify-between items-end">
+                                  <span className="text-[9px] font-black text-gray-500 uppercase">{stat.name}</span>
+                                  <span className={`text-[10px] font-black ${stat.finalAccepted >= 10 ? 'text-red-500' : 'text-blue-600'}`}>
+                                      {stat.finalAccepted}/10
+                                  </span>
+                              </div>
+                              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                  <div 
+                                      className={`h-full transition-all duration-1000 ${stat.finalAccepted >= 10 ? 'bg-red-500' : 'bg-blue-600'}`} 
+                                      style={{ width: `${(stat.finalAccepted / 10) * 100}%` }}
+                                  ></div>
+                              </div>
+                          </div>
+                      ))}
+                      <div className="p-4 bg-gray-50 rounded-xl text-[9px] text-gray-400 font-medium leading-relaxed italic">
+                          Le quota est fixé à 10 équipes par région. Les équipes acceptées reçoivent automatiquement l'email d'invitation officiel.
+                      </div>
+                  </div>
+               </div>
+            </div>
+        )}
+
+        {/* MODALE D'ÉVALUATION / CONSULTATION DU DOSSIER */}
         {evaluatingTeam && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/90 backdrop-blur-md overflow-y-auto">
              <div className="bg-white w-full max-w-6xl rounded-[4rem] shadow-2xl overflow-hidden flex flex-col h-[90vh] animate-in zoom-in-95 duration-300">
                 <div className="p-10 border-b bg-gray-50 flex justify-between items-center shrink-0">
                    <div>
-                      <h2 className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-1">Dossier Technique de Candidature</h2>
+                      <h2 className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-1">
+                        {isViewOnly ? 'Consultation Administrative' : 'Évaluation Jury'}
+                      </h2>
                       <h3 className="text-3xl font-black text-blue-900 uppercase tracking-tighter">{evaluatingTeam.name}</h3>
                    </div>
                    <button onClick={() => setEvaluatingTeam(null)} className="p-4 bg-gray-200 text-gray-600 rounded-[2rem] hover:bg-red-50 hover:text-red-500 transition-all">
@@ -490,29 +816,32 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
                             </div>
                          </section>
 
-                         <section className="bg-gray-50 p-8 rounded-[3rem] border border-gray-100 space-y-6">
-                            <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Notation Jury</h4>
-                            <div className="space-y-4">
-                               <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">Score Qualitatif (/40)</label>
-                               <input 
-                                 type="range" 
-                                 min="0" max="40" 
-                                 value={evaluationScores[evaluatingTeam.id] || 0} 
-                                 onChange={(e) => setEvaluationScores({...evaluationScores, [evaluatingTeam.id]: parseInt(e.target.value)})} 
-                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" 
-                               />
-                               <div className="flex justify-between text-lg font-black text-blue-900">
-                                  <span>0</span>
-                                  <span>{evaluationScores[evaluatingTeam.id] || 0}</span>
-                                  <span>40</span>
-                               </div>
-                            </div>
-                            <div className="pt-4 flex flex-col gap-3">
-                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'selected')} className="w-full py-5 bg-emerald-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl hover:bg-emerald-700 transition-all">SÉLECTIONNER</button>
-                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'rejected')} className="w-full py-5 bg-red-600 text-white text-[11px] font-black uppercase rounded-2xl hover:bg-red-700 transition-all">REJETER</button>
-                               <button onClick={() => handleDecisionClick(evaluatingTeam, 'waitlist')} className="w-full py-5 border-2 border-orange-200 text-orange-500 text-[11px] font-black uppercase rounded-2xl hover:bg-orange-50 transition-all">LISTE D'ATTENTE</button>
-                            </div>
-                         </section>
+                         {/* ZONE DE NOTATION JURY (Masquée si mode consultation) */}
+                         {!isViewOnly && (
+                           <section className="bg-gray-50 p-8 rounded-[3rem] border border-gray-100 space-y-6 animate-in slide-in-from-left-4">
+                              <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b pb-2">Notation Jury</h4>
+                              <div className="space-y-4">
+                                 <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">Score Qualitatif (/40)</label>
+                                 <input 
+                                   type="range" 
+                                   min="0" max="40" 
+                                   value={evaluationScores[evaluatingTeam.id] || 0} 
+                                   onChange={(e) => setEvaluationScores({...evaluationScores, [evaluatingTeam.id]: parseInt(e.target.value)})} 
+                                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" 
+                                 />
+                                 <div className="flex justify-between text-lg font-black text-blue-900">
+                                    <span>0</span>
+                                    <span>{evaluationScores[evaluatingTeam.id] || 0}</span>
+                                    <span>40</span>
+                                 </div>
+                              </div>
+                              <div className="pt-4 flex flex-col gap-3">
+                                 <button onClick={() => handleDecisionClick(evaluatingTeam, 'selected')} className="w-full py-5 bg-emerald-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl hover:bg-emerald-700 transition-all">SÉLECTIONNER (Pré-Valider)</button>
+                                 <button onClick={() => handleDecisionClick(evaluatingTeam, 'rejected')} className="w-full py-5 bg-red-600 text-white text-[11px] font-black uppercase rounded-2xl hover:bg-red-700 transition-all">REJETER</button>
+                                 <button onClick={() => handleDecisionClick(evaluatingTeam, 'waitlist')} className="w-full py-5 border-2 border-orange-200 text-orange-500 text-[11px] font-black uppercase rounded-2xl hover:bg-orange-50 transition-all">LISTE D'ATTENTE</button>
+                              </div>
+                           </section>
+                         )}
                       </div>
 
                       <div className="lg:col-span-2 space-y-12">
@@ -589,7 +918,7 @@ const AdminDashboard: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavig
                    <div>
                       <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Corps du message</label>
                       <textarea 
-                         rows={8}
+                         rows={12}
                          value={emailDraft.body}
                          onChange={(e) => setEmailDraft({...emailDraft, body: e.target.value})} 
                          className="w-full p-4 bg-white border border-gray-200 rounded-xl text-sm leading-relaxed text-gray-700 focus:ring-2 focus:ring-blue-600 outline-none" 

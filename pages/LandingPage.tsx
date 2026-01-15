@@ -8,9 +8,8 @@ interface LandingPageProps {
   onNavigate: (page: string) => void;
 }
 
-// Image 50 Ans FNCT - Chargée depuis le dossier local /img
-// Correction : Utilisation de "/" au lieu de "\"
-const SPLASH_IMAGE_URL = '/img/Image_50_anniv.jpg'; 
+// Image 50 Ans FNCT - Lien direct Google Drive généré à partir de l'ID fourni
+const SPLASH_IMAGE_URL = 'img/Diapositive1.bmp'; 
 
 const CountdownTimer = () => {
   const targetDate = new Date('2026-04-03T09:00:00').getTime();
@@ -56,15 +55,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   const [showSplash, setShowSplash] = useState(false);
   const [candidateCount, setCandidateCount] = useState<number>(0);
 
-  useEffect(() => {
-    // Vérification si le splash a déjà été vu dans cette session
-    const hasSeenSplash = sessionStorage.getItem('fnct_splash_seen');
-    if (!hasSeenSplash) {
-      // Petit délai pour l'animation
-      const timer = setTimeout(() => setShowSplash(true), 500);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+  // NOTE: Splash screen désactivé (useEffect supprimé)
 
   useEffect(() => {
     // Récupération du nombre de candidats inscrits
@@ -100,7 +91,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   return (
     <Layout onNavigate={onNavigate}>
       
-      {/* SPLASH SCREEN MODAL */}
+      {/* SPLASH SCREEN MODAL (Conditionné par showSplash qui reste à false) */}
       {showSplash && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-900/80 backdrop-blur-md transition-opacity duration-500 animate-in fade-in">
           <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 p-2 border-4 border-white">
@@ -115,7 +106,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </button>
             
             <div className="relative rounded-2xl overflow-hidden bg-gray-100 flex items-center justify-center min-h-[300px] sm:min-h-[500px]">
-               {/* Image principale - Remplacez SPLASH_IMAGE_URL par votre lien */}
+               {/* Image principale */}
                <img 
                  src={SPLASH_IMAGE_URL} 
                  alt="50 Ans FNCT" 
@@ -169,7 +160,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </h1>
             
             <p className="text-xl md:text-2xl text-blue-100/70 max-w-2xl mb-12 font-medium leading-relaxed">
-              Le plus grand hackathon municipal de Tunisie. Transformez les défis locaux en opportunités technologiques concrètes pour nos territoires.
+              Le plus grand hackathon municipal de Tunisie. Transformez les défis locaux en opportunités innovantes concrètes pour nos territoires.
             </p>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
@@ -343,18 +334,47 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {REGIONS.map((region, idx) => (
-              <div key={idx} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center space-x-6 hover:border-blue-200 transition-all">
-                <div className="flex flex-col items-center justify-center px-4 py-3 bg-blue-50 rounded-2xl min-w-[80px]">
-                  <span className="text-[10px] font-black text-blue-400 uppercase leading-none mb-1">AVR</span>
-                  <span className="text-2xl font-black text-blue-900 leading-none">{region.date.split('-')[2]}</span>
+            {REGIONS.map((region, idx) => {
+               // Extraction du nom de la ville entre parenthèses
+               const cityName = region.name.match(/\((.*?)\)/)?.[1] || region.name;
+               
+               return (
+                <div key={idx} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col space-y-6 hover:border-blue-200 transition-all">
+                  <div className="flex items-center space-x-6">
+                    <div className="flex flex-col items-center justify-center px-4 py-3 bg-blue-50 rounded-2xl min-w-[80px]">
+                      <span className="text-[10px] font-black text-blue-400 uppercase leading-none mb-1">AVR</span>
+                      <span className="text-2xl font-black text-blue-900 leading-none">{region.date.split('-')[2]}</span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-blue-900 uppercase tracking-tight">{region.name}</h4>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Hackathon Régional</p>
+                    </div>
+                  </div>
+
+                  {/* AJOUT: Détails emplacement et contact */}
+                  <div className="pt-4 border-t border-gray-50 space-y-3">
+                     <div className="flex items-start space-x-3">
+                        <div className="mt-0.5 text-gray-300">
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </div>
+                        <div>
+                           <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Emplacement de l'évènement</p>
+                           <p className="text-[11px] font-bold text-blue-900">Hôtel {cityName}</p>
+                        </div>
+                     </div>
+                     <div className="flex items-start space-x-3">
+                        <div className="mt-0.5 text-gray-300">
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+                        <div>
+                           <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Contact : Mme Saida Issaoui</p>
+                           <a href="tel:+21658400194" className="text-[11px] font-bold text-blue-600 hover:underline">Mob : +216 58 400 194</a>
+                        </div>
+                     </div>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-black text-blue-900 uppercase tracking-tight">{region.name}</h4>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Hackathon Régional</p>
-                </div>
-              </div>
-            ))}
+               );
+            })}
           </div>
         </div>
       </section>
